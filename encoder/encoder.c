@@ -822,8 +822,8 @@ static int x264_validate_parameters( x264_t *h )
         h->param.i_nal_hrd = X264_NAL_HRD_NONE;
     }
 
-    if( h->param.i_nal_hrd == X264_NAL_HRD_CBR &&
-       (h->param.rc.i_bitrate != h->param.rc.i_vbv_max_bitrate || !h->param.rc.i_vbv_max_bitrate) )
+     if( (h->param.i_nal_hrd == X264_NAL_HRD_CBR || h->param.i_nal_hrd == X264_NAL_HRD_FAKE_CBR) &&
+         (h->param.rc.i_bitrate != h->param.rc.i_vbv_max_bitrate || !h->param.rc.i_vbv_max_bitrate) )
     {
         x264_log( h, X264_LOG_WARNING, "CBR HRD requires constant bitrate\n" );
         h->param.i_nal_hrd = X264_NAL_HRD_VBR;
@@ -2786,7 +2786,7 @@ static int x264_encoder_frame_end( x264_t *h, x264_t *thread_current,
 
     x264_emms();
     /* generate sei buffering period and insert it into place */
-    if( h->fenc->b_keyframe && h->sps->vui.b_nal_hrd_parameters_present )
+    if( h->fenc->b_keyframe && h->param.i_nal_hrd )
     {
         x264_hrd_fullness( h );
         x264_nal_start( h, NAL_SEI, NAL_PRIORITY_DISPOSABLE );
