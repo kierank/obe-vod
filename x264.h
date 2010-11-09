@@ -175,7 +175,7 @@ static const char * const x264_fullrange_names[] = { "off", "on", 0 };
 static const char * const x264_colorprim_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", 0 };
 static const char * const x264_transfer_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100", "log316", 0 };
 static const char * const x264_colmatrix_names[] = { "GBR", "bt709", "undef", "", "fcc", "bt470bg", "smpte170m", "smpte240m", "YCgCo", 0 };
-static const char * const x264_nal_hrd_names[] = { "none", "vbr", "cbr", 0 };
+static const char * const x264_nal_hrd_names[] = { "none", "vbr", "cbr", "fakevbr", "fakecbr", 0 };
 static const char * const x264_open_gop_names[] = { "none", "normal", "bluray", 0 };
 
 /* Colorspace type */
@@ -214,6 +214,8 @@ static const char * const x264_open_gop_names[] = { "none", "normal", "bluray", 
 #define X264_NAL_HRD_NONE            0
 #define X264_NAL_HRD_VBR             1
 #define X264_NAL_HRD_CBR             2
+#define X264_NAL_HRD_FAKE_VBR        3
+#define X264_NAL_HRD_FAKE_CBR        4
 
 /* Zones: override ratecontrol or other options for specific sections of the video.
  * See x264_encoder_reconfig() for which options can be changed.
