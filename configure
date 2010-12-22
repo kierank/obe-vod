@@ -11,6 +11,7 @@ echo "  --disable-avs            disables avisynth support (windows only)"
 echo "  --disable-lavf           disables libavformat support"
 echo "  --disable-ffms           disables ffmpegsource support"
 echo "  --disable-gpac           disables gpac support"
+echo "  --disable-libmpegts      disables libmpegts support"
 echo "  --disable-gpl            disables GPL-only features"
 echo "  --disable-thread         disables multithreaded encoding"
 echo "  --enable-win32thread     use win32threads (windows only)"
@@ -152,6 +153,7 @@ avs="auto"
 lavf="auto"
 ffms="auto"
 gpac="auto"
+lmpegts="auto"
 gpl="yes"
 thread="auto"
 swscale="auto"
@@ -173,7 +175,7 @@ cross_prefix=""
 EXE=""
 
 # list of all preprocessor HAVE values we can define
-CONFIG_HAVE="MALLOC_H ALTIVEC ALTIVEC_H MMX ARMV6 ARMV6T2 NEON BEOSTHREAD POSIXTHREAD WIN32THREAD THREAD LOG2F VISUALIZE SWSCALE LAVF FFMS GPAC GF_MALLOC AVS GPL"
+CONFIG_HAVE="MALLOC_H ALTIVEC ALTIVEC_H MMX ARMV6 ARMV6T2 NEON BEOSTHREAD POSIXTHREAD WIN32THREAD THREAD LOG2F VISUALIZE SWSCALE LAVF FFMS GPAC GF_MALLOC AVS GPL LIBMPEGTS"
 
 # parse options
 
@@ -209,6 +211,9 @@ for opt do
             ;;
         --disable-gpac)
             gpac="no"
+            ;;
+        --disable-libmpegts)
+            lmpegts="no"
             ;;
         --disable-gpl)
             gpl="no"
@@ -853,6 +858,7 @@ avs:        $avs
 lavf:       $lavf
 ffms:       $ffms
 gpac:       $gpac
+libmpegts:  $lmpegts
 gpl:        $gpl
 thread:     $thread
 filters:    $filters

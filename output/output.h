@@ -32,6 +32,14 @@
 typedef struct
 {
     int use_dts_compress;
+
+    /* ts options */
+    int i_ts_muxrate;
+    int i_ts_type;
+    int b_ts_cbr;
+    int i_ts_video_pid;
+    int i_ts_pmt_pid;
+    int i_ts_pcr_pid;
 } cli_output_opt_t;
 
 typedef struct
@@ -47,5 +55,6 @@ extern const cli_output_t raw_output;
 extern const cli_output_t mkv_output;
 extern const cli_output_t mp4_output;
 extern const cli_output_t flv_output;
+extern const cli_output_t ts_output;
 
 #endif

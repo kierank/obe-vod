@@ -117,6 +117,9 @@ static const char * const muxer_names[] =
 #if HAVE_GPAC
     "mp4",
 #endif
+#if TS_OUTPUT
+    "ts",
+#endif
     0
 };
 
@@ -787,7 +790,14 @@ enum
     OPT_INPUT_RES,
     OPT_INPUT_CSP,
     OPT_INPUT_DEPTH,
-    OPT_DTS_COMPRESSION
+    OPT_DTS_COMPRESSION,
+#ifdef TS_OUTPUT
+    OPT_TS_MUXRATE,
+    OPT_TS_CBR,
+    OPT_TS_VIDEO_PID,
+    OPT_TS_PMT_PID,
+    OPT_TS_PCR_PID
+#endif
 } OptionsOPT;
 
 static char short_options[] = "8A:B:b:f:hI:i:m:o:p:q:r:t:Vvw";
@@ -943,6 +953,13 @@ static struct option long_options[] =
     { "input-csp",   required_argument, NULL, OPT_INPUT_CSP },
     { "input-depth", required_argument, NULL, OPT_INPUT_DEPTH },
     { "dts-compress",      no_argument, NULL, OPT_DTS_COMPRESSION },
+#ifdef TS_OUTPUT
+    { "ts-muxrate",  required_argument, NULL, OPT_TS_MUXRATE },
+    { "ts-cbr",            no_argument, NULL, OPT_TS_CBR },
+    { "ts-video-pid", required_argument, NULL, OPT_TS_VIDEO_PID },
+    { "ts-pmt-pid",  required_argument, NULL, OPT_TS_PMT_PID },
+    { "ts-pcr-pid",  required_argument, NULL, OPT_TS_PCR_PID },
+#endif
     {0, 0, 0, 0}
 };
 
@@ -979,6 +996,21 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
         output = flv_output;
         param->b_annexb = 0;
         param->b_repeat_headers = 0;
+    }
+    else if( !strcasecmp( ext, "ts" ) )
+    {
+#ifdef TS_OUTPUT
+        output = ts_output;
+        param->b_aud = 1;
+        if( !param->rc.i_vbv_buffer_size || !param->i_nal_hrd  )
+        {
+            fprintf( stderr, "x264 [error]: transport stream muxing must have VBV and NAL HRD parameters enabled \n" );
+            return -1;
+        }
+#else
+        fprintf( stderr, "x264 [error]: not compiled with TS output support\n" );
+        return -1;
+#endif
     }
     else
         output = raw_output;
@@ -1314,6 +1346,23 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
             case OPT_DTS_COMPRESSION:
                 output_opt.use_dts_compress = 1;
                 break;
+#ifdef TS_OUTPUT
+	    case OPT_TS_MUXRATE:
+                output_opt.i_ts_muxrate = atoi( optarg );
+                break;
+	    case OPT_TS_CBR:
+                output_opt.b_ts_cbr = 1;
+                break;
+	    case OPT_TS_VIDEO_PID:
+                output_opt.i_ts_video_pid = atoi( optarg );
+                break;
+	    case OPT_TS_PMT_PID:
+                output_opt.i_ts_pmt_pid = atoi( optarg );
+                break;
+	    case OPT_TS_PCR_PID:
+                output_opt.i_ts_pcr_pid = atoi( optarg );
+                break;
+#endif
             default:
 generic_option:
             {
