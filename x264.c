@@ -117,7 +117,7 @@ static const char * const muxer_names[] =
 #if HAVE_GPAC
     "mp4",
 #endif
-#if TS_OUTPUT
+#if HAVE_LIBMPEGTS
     "ts",
 #endif
     0
@@ -791,7 +791,7 @@ enum
     OPT_INPUT_CSP,
     OPT_INPUT_DEPTH,
     OPT_DTS_COMPRESSION,
-#ifdef TS_OUTPUT
+#ifdef HAVE_LIBMPEGTS
     OPT_TS_MUXRATE,
     OPT_TS_CBR,
     OPT_TS_VIDEO_PID,
@@ -953,7 +953,7 @@ static struct option long_options[] =
     { "input-csp",   required_argument, NULL, OPT_INPUT_CSP },
     { "input-depth", required_argument, NULL, OPT_INPUT_DEPTH },
     { "dts-compress",      no_argument, NULL, OPT_DTS_COMPRESSION },
-#ifdef TS_OUTPUT
+#ifdef HAVE_LIBMPEGTS
     { "ts-muxrate",  required_argument, NULL, OPT_TS_MUXRATE },
     { "ts-cbr",            no_argument, NULL, OPT_TS_CBR },
     { "ts-video-pid", required_argument, NULL, OPT_TS_VIDEO_PID },
@@ -999,7 +999,7 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
     }
     else if( !strcasecmp( ext, "ts" ) )
     {
-#ifdef TS_OUTPUT
+#ifdef HAVE_LIBMPEGTS
         output = ts_output;
         param->b_aud = 1;
         if( !param->rc.i_vbv_buffer_size || !param->i_nal_hrd  )
@@ -1346,7 +1346,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
             case OPT_DTS_COMPRESSION:
                 output_opt.use_dts_compress = 1;
                 break;
-#ifdef TS_OUTPUT
+#ifdef HAVE_LIBMPEGTS
 	    case OPT_TS_MUXRATE:
                 output_opt.i_ts_muxrate = atoi( optarg );
                 break;
