@@ -1007,6 +1007,11 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
             fprintf( stderr, "x264 [error]: transport stream muxing must have VBV and NAL HRD parameters enabled \n" );
             return -1;
         }
+	if( param->b_vfr_input )
+        {
+            fprintf( stderr, "x264 [error]: transport stream muxing is not compatible with vfr \n" );
+            return -1;
+        }
 #else
         fprintf( stderr, "x264 [error]: not compiled with TS output support\n" );
         return -1;
