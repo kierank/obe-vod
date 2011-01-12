@@ -50,7 +50,7 @@ static int write_headers( hnd_t handle, x264_nal_t *p_nal )
     return -1;
 }
 
-static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_t *p_picture )
+static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_t *p_picture, int i_ref_idc )
 {
     if( fwrite( p_nalu, i_size, 1, (FILE*)handle ) )
         return i_size;

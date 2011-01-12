@@ -29,6 +29,21 @@
 
 #include "x264cli.h"
 
+#define MAX_EXTRA 20
+
+typedef struct
+{
+    char *filename;
+    int bitrate;
+    int pid;
+    char lang[4];
+
+    FILE *fp;
+    int increment;
+    int64_t next_audio_pts;
+    int num_audio_frames;
+} ts_extra_opt_t;
+
 typedef struct
 {
     int use_dts_compress;
@@ -40,6 +55,11 @@ typedef struct
     int i_ts_video_pid;
     int i_ts_pmt_pid;
     int i_ts_pcr_pid;
+
+    int num_extra_streams;
+    ts_extra_opt_t extra_streams[MAX_EXTRA];
+
+    int b_ts_dvb_au;
 } cli_output_opt_t;
 
 typedef struct
@@ -47,7 +67,7 @@ typedef struct
     int (*open_file)( char *psz_filename, hnd_t *p_handle, cli_output_opt_t *opt );
     int (*set_param)( hnd_t handle, x264_param_t *p_param );
     int (*write_headers)( hnd_t handle, x264_nal_t *p_nal );
-    int (*write_frame)( hnd_t handle, uint8_t *p_nal, int i_size, x264_picture_t *p_picture );
+    int (*write_frame)( hnd_t handle, uint8_t *p_nal, int i_size, x264_picture_t *p_picture, int i_ref_idc );
     int (*close_file)( hnd_t handle, int64_t largest_pts, int64_t second_largest_pts );
 } cli_output_t;
 

@@ -759,6 +759,36 @@ static void help( x264_param_t *defaults, int longhelp )
     x264_register_vid_filters();
     x264_vid_filter_help( longhelp );
     H0( "\n" );
+#ifdef HAVE_LIBMPEGTS
+    H0( "\n" );
+    H0( "Transport Stream muxing:\n" );
+    H0( "\n" );
+    H0( "      --ts-muxrate <integer>  Transport Stream Bitrate in bits per second\n" );
+    H0( "      --ts-cbr                Write null packets to force Constant Bit rate\n" );
+    H0( "      --ts-video-pid <integer> PID of video stream\n" );
+    H0( "      --ts-pmt-pid <integer>   PID of Program Map Table\n" );
+    H0( "      --ts-pcr-pid <integer>   PID of Program Clock Reference\n" );
+    H0( "\n" );
+    H0( "Transport Stream Extra streams:\n" );
+    H0( "\n" );
+    H0( "The following CBR audio formats (with file extensions) are supported: \n" );
+    H0( "\n" );
+    H0( "     .mp2, .ac3, .latm. (.latm is created by qaac)\n" );
+    H0( "\n" );
+    H0( "      --ts-extra <audio0>/<audio1>/<audio2>\n" );
+    H0( "\n" );
+    H0( "Format of <audio>:\n" );
+    H0( "\n" );
+    H0( "     <audio>:<option>=<value> \n" );
+    H0( "     e.g. audio:pid=500,lang=eng,bitrate=384000\n" );
+    H0( "\n" );
+    H0( "Audio Options:\n" );
+    H0( "\n" );
+    H0( "    file <file> -         Mandatory. File name\n" );
+    H0( "    bitrate <integer> -   Mandatory. Bitrate in bits per second\n" );
+    H0( "    lang <3 characters> - Optional. Language Code\n" );
+    H0( "    pid <integer> -       Optional. PID of audio stream\n" );
+#endif
 }
 
 enum
@@ -796,7 +826,9 @@ enum
     OPT_TS_CBR,
     OPT_TS_VIDEO_PID,
     OPT_TS_PMT_PID,
-    OPT_TS_PCR_PID
+    OPT_TS_PCR_PID,
+    OPT_TS_EXTRA,
+    OPT_TS_DVB_AU
 #endif
 } OptionsOPT;
 
@@ -959,6 +991,8 @@ static struct option long_options[] =
     { "ts-video-pid", required_argument, NULL, OPT_TS_VIDEO_PID },
     { "ts-pmt-pid",  required_argument, NULL, OPT_TS_PMT_PID },
     { "ts-pcr-pid",  required_argument, NULL, OPT_TS_PCR_PID },
+    { "ts-dvb-au",         no_argument, NULL, OPT_TS_DVB_AU },
+    { "ts-extra",    required_argument, NULL, OPT_TS_EXTRA },
 #endif
     {0, 0, 0, 0}
 };
@@ -1178,6 +1212,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
     x264_param_t defaults;
     char *profile = NULL;
     char *vid_filters = NULL;
+    char *ts_extra = NULL;
     int b_thread_input = 0;
     int b_turbo = 1;
     int b_user_ref = 0;
@@ -1347,20 +1382,26 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 output_opt.use_dts_compress = 1;
                 break;
 #ifdef HAVE_LIBMPEGTS
-	    case OPT_TS_MUXRATE:
+            case OPT_TS_MUXRATE:
                 output_opt.i_ts_muxrate = atoi( optarg );
                 break;
-	    case OPT_TS_CBR:
+            case OPT_TS_CBR:
                 output_opt.b_ts_cbr = 1;
                 break;
-	    case OPT_TS_VIDEO_PID:
+            case OPT_TS_VIDEO_PID:
                 output_opt.i_ts_video_pid = atoi( optarg );
                 break;
-	    case OPT_TS_PMT_PID:
+            case OPT_TS_PMT_PID:
                 output_opt.i_ts_pmt_pid = atoi( optarg );
                 break;
-	    case OPT_TS_PCR_PID:
+            case OPT_TS_PCR_PID:
                 output_opt.i_ts_pcr_pid = atoi( optarg );
+                break;
+            case OPT_TS_EXTRA:
+                ts_extra = optarg;
+                break;
+            case OPT_TS_DVB_AU:
+                output_opt.b_ts_dvb_au = 1;
                 break;
 #endif
             default:
@@ -1391,6 +1432,66 @@ generic_option:
             x264_cli_log( "x264", X264_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg );
             return -1;
         }
+    }
+
+    if( ts_extra )
+    {
+        int i = 0;
+        /* parse ts extra chain */
+        for( char *p = ts_extra; p && *p; )
+        {
+            int tok_len = strcspn( p, "/" );
+            int p_len = strlen( p );
+            p[tok_len] = 0;
+            int name_len = strcspn( p, ":" );
+            p[name_len] = 0;
+            name_len += name_len != tok_len;
+            if( !strcasecmp( p, "audio" ) )
+            {
+                char *params = p + name_len;
+                static const char *optlist[] = { "filename", "bitrate", "lang", "pid", NULL };
+                char **opts = x264_split_options( params, optlist );
+                if( !opts && params )
+                    break;
+
+	        char *filename = x264_get_option( optlist[0], opts );
+	        char *str_bitrate = x264_get_option( optlist[1], opts );
+	        char *lang = x264_get_option( optlist[2], opts );
+	        char *str_pid = x264_get_option( optlist[3], opts );
+                int bitrate   = x264_otoi( str_bitrate, 0 );
+                int pid       = x264_otoi( str_pid, 0 );
+
+                if( !filename )
+                {
+                   fprintf( stderr, "filename missing in ts extra stream %i\n", i );
+                   break;
+                }
+                else if( !bitrate )
+                {
+                   fprintf( stderr, "bitrate missing in ts extra stream %i\n", i );
+                   break;
+                }
+
+                output_opt.extra_streams[i].filename = malloc( strlen( filename ) + 1 );
+                strcpy( output_opt.extra_streams[i].filename, filename );
+
+                /* use only the first three characters */
+                if( lang && strlen( lang ) >= 3 )
+                {
+                    memcpy( output_opt.extra_streams[i].lang, lang, 3 );
+                    output_opt.extra_streams[i].lang[3] = 0;
+                }
+                output_opt.extra_streams[i].bitrate = bitrate;
+                output_opt.extra_streams[i].pid = pid;
+
+                i++;
+            }
+	    else
+                fprintf( stderr, "%s is not a valid ts extra type\n", p );
+
+            p += X264_MIN( tok_len+1, p_len );
+        }
+        output_opt.num_extra_streams = i;
     }
 
     /* If first pass mode is used, apply faster settings. */
@@ -1542,7 +1643,6 @@ generic_option:
             }
     }
 
-
     return 0;
 }
 
@@ -1597,7 +1697,7 @@ static int encode_frame( x264_t *h, hnd_t hout, x264_picture_t *pic, int64_t *la
 
     if( i_frame_size )
     {
-        i_frame_size = output.write_frame( hout, nal[0].p_payload, i_frame_size, &pic_out );
+        i_frame_size = output.write_frame( hout, nal[0].p_payload, i_frame_size, &pic_out, nal[0].i_ref_idc );
         *last_dts = pic_out.i_dts;
     }
 

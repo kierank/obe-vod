@@ -217,7 +217,7 @@ static int write_headers( hnd_t handle, x264_nal_t *p_nal )
     return sei_size + sps_size + pps_size;
 }
 
-static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_t *p_picture )
+static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_t *p_picture, int i_ref_idc )
 {
     flv_hnd_t *p_flv = handle;
     flv_buffer *c = p_flv->c;
