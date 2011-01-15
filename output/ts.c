@@ -369,13 +369,16 @@ static int close_file( hnd_t handle, int64_t largest_pts, int64_t second_largest
 {
     ts_hnd_t *p_ts = handle;
 
-    uint8_t *output = NULL;
-    int len = 0;
+    if( p_ts->first )
+    {
+        uint8_t *output = NULL;
+        int len = 0;
 
-    ts_write_frames( p_ts->w, NULL, 0, &output, &len );
+        ts_write_frames( p_ts->w, NULL, 0, &output, &len );
 
-    if( len )
-        fwrite( output, 1, len, p_ts->fp );
+        if( len )
+            fwrite( output, 1, len, p_ts->fp );
+    }
 
     if( ts_close_writer( p_ts->w ) < 0 )
         return -1;
