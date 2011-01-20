@@ -64,7 +64,9 @@ cc_check() {
         log_check "for $3 in $1";
     fi
     rm -f conftest.c
-    [ -n "$1" ] && echo "#include <$1>" > conftest.c
+    echo "#include <stdio.h>" > conftest.c
+    echo "#include <stdint.h>" >> conftest.c
+    [ -n "$1" ] && echo "#include <$1>" >> conftest.c
     echo "int main () { $3 return 0; }" >> conftest.c
     if $CC conftest.c $CFLAGS $2 $LDFLAGSCLI $LDFLAGS -o conftest >conftest.log 2>&1; then
         res=$?
@@ -88,7 +90,9 @@ cc_check() {
 cpp_check() {
     log_check "whether $3 is true"
     rm -f conftest.c
-    [ -n "$1" ] && echo "#include <$1>" > conftest.c
+    echo "#include <stdio.h>" > conftest.c
+    echo "#include <stdint.h>" >> conftest.c
+    [ -n "$1" ] && echo "#include <$1>" >> conftest.c
     echo -e "#if !($3) \n#error $4 \n#endif " >> conftest.c
 
     if $CC conftest.c $CFLAGS $2 -E -o conftest >conftest.log 2>&1; then
@@ -706,6 +710,19 @@ if [ "$gpac" = "yes" ] ; then
         define HAVE_GF_MALLOC
     fi
     LDFLAGSCLI="$GPAC_LIBS $LDFLAGSCLI"
+fi
+
+LMPEGTS_LIBS="-lmpegts"
+if [ "$lmpegts" = "auto" ] ; then
+    lmpegts="no"
+    if cc_check libmpegts.h "$LMPEGTS_LIBS" ; then
+        lmpegts="yes"
+    fi
+fi
+
+if [ "$lmpegts" = "yes" ] ; then
+    define HAVE_LIBMPEGTS
+    LDFLAGSCLI="$LMPEGTS_LIBS $LDFLAGSCLI"
 fi
 
 if [ "$avs" = "auto" ] ; then
