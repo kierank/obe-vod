@@ -19,9 +19,9 @@
  *****************************************************************************/
 
 #include "output.h"
-#include "libmpegts/libmpegts.h"
+#include <libmpegts.h>
 
-#define MIN_PID 0x20
+#define MIN_PID 0x30
 #define MAX_PID 0x1fff
 
 #define AC3_NUM_SAMPLES 1536
