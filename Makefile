@@ -143,6 +143,7 @@ DEP  = depend
 .PHONY: all default fprofiled clean distclean install uninstall dox test testclean
 
 default: $(DEP) x264$(EXE)
+	mv x264$(EXE) obevod$(EXE)
 
 libx264.a: .depend $(OBJS) $(OBJASM)
 	$(AR) rc libx264.a $(OBJS) $(OBJASM)
@@ -235,6 +236,7 @@ else
 	$(if $(SONAME), install -m 755 $(SONAME) $(DESTDIR)$(libdir))
 endif
 	$(if $(IMPLIBNAME), install -m 644 $(IMPLIBNAME) $(DESTDIR)$(libdir))
+	ldconfig
 
 uninstall:
 	rm -f $(DESTDIR)$(includedir)/x264.h $(DESTDIR)$(includedir)/x264_config.h $(DESTDIR)$(libdir)/libx264.a

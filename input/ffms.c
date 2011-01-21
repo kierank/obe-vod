@@ -101,7 +101,7 @@ static int open_file( char *psz_filename, hnd_t *p_handle, video_info_t *info, c
     info->sar_width    = videop->SARNum;
     info->fps_den      = videop->FPSDenominator;
     info->fps_num      = videop->FPSNumerator;
-    h->vfr_input       = info->vfr;
+    h->vfr_input       = 0;
     /* ffms is thread unsafe as it uses a single frame buffer for all frame requests */
     info->thread_safe  = 0;
 

@@ -165,7 +165,7 @@ static int open_file( char *psz_filename, hnd_t *p_handle, video_info_t *info, c
     info->timebase_den = h->lavf->streams[i]->time_base.den;
     /* lavf is thread unsafe as calling av_read_frame invalidates previously read AVPackets */
     info->thread_safe  = 0;
-    h->vfr_input       = info->vfr;
+    h->vfr_input       = 0;
     FAIL_IF_ERROR( avcodec_open( c, avcodec_find_decoder( c->codec_id ) ),
                    "could not find decoder for video stream\n" )
 
