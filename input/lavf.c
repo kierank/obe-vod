@@ -182,6 +182,7 @@ static int open_file( char *psz_filename, hnd_t *p_handle, video_info_t *info, c
     info->num_frames = h->lavf->streams[i]->nb_frames;
     info->sar_height = c->sample_aspect_ratio.den;
     info->sar_width  = c->sample_aspect_ratio.num;
+    info->vfr        = h->vfr_input;
 
     /* avisynth stores rgb data vertically flipped. */
     if( !strcasecmp( get_filename_extension( psz_filename ), "avs" ) &&
