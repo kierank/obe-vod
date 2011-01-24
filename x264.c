@@ -40,7 +40,7 @@
 #include "output/output.h"
 #include "filters/filters.h"
 
-#define FAIL_IF_ERROR( cond, ... ) FAIL_IF_ERR( cond, "x264", __VA_ARGS__ )
+#define FAIL_IF_ERROR( cond, ... ) FAIL_IF_ERR( cond, "obevod", __VA_ARGS__ )
 
 #ifdef _WIN32
 #include <windows.h>
@@ -125,6 +125,7 @@ static const char * const muxer_names[] =
 
 static const char * const pulldown_names[] = { "none", "22", "32", "64", "double", "triple", "euro", 0 };
 static const char * const log_level_names[] = { "none", "error", "warning", "info", "debug", 0 };
+static const char * const ts_types[] = { "generic", "dvb", "cablelabs", 0 };
 
 typedef struct{
     int mod;
@@ -340,8 +341,8 @@ static void help( x264_param_t *defaults, int longhelp )
 #define H0 printf
 #define H1 if(longhelp>=1) printf
 #define H2 if(longhelp==2) printf
-    H0( "x264 core:%d%s\n"
-        "Syntax: x264 [options] -o outfile infile\n"
+    H0( "OBE VoD encoder based on x264 core:%d%s\n"
+        "Syntax: obevod [options] -o outfile infile\n"
         "\n"
         "Infile can be raw (in which case resolution is required),\n"
         "  or YUV4MPEG (*.y4m),\n"
@@ -352,6 +353,7 @@ static void help( x264_param_t *defaults, int longhelp )
         " .mkv -> Matroska\n"
         " .flv -> Flash Video\n"
         " .mp4 -> MP4 if compiled with GPAC support (%s)\n"
+        " .ts  -> TS if compiled with libmpegts support (%s)\n"
         "Output bit depth: %d (configured at compile time)\n"
         "\n"
         "Options:\n"
@@ -381,26 +383,13 @@ static void help( x264_param_t *defaults, int longhelp )
 #else
         "no",
 #endif
+#if HAVE_GPAC
+        "yes",
+#else
+        "no",
+#endif
         x264_bit_depth
       );
-    H0( "Example usage:\n" );
-    H0( "\n" );
-    H0( "      Constant quality mode:\n" );
-    H0( "            x264 --crf 24 -o <output> <input>\n" );
-    H0( "\n" );
-    H0( "      Two-pass with a bitrate of 1000kbps:\n" );
-    H0( "            x264 --pass 1 --bitrate 1000 -o <output> <input>\n" );
-    H0( "            x264 --pass 2 --bitrate 1000 -o <output> <input>\n" );
-    H0( "\n" );
-    H0( "      Lossless:\n" );
-    H0( "            x264 --qp 0 -o <output> <input>\n" );
-    H0( "\n" );
-    H0( "      Maximum PSNR at the cost of speed and visual quality:\n" );
-    H0( "            x264 --preset placebo --tune psnr -o <output> <input>\n" );
-    H0( "\n" );
-    H0( "      Constant bitrate at 1000kbps with a 2 second-buffer:\n");
-    H0( "            x264 --vbv-bufsize 2000 --bitrate 1000 -o <output> <input>\n" );
-    H0( "\n" );
     H0( "Presets:\n" );
     H0( "\n" );
     H0( "      --profile               Force the limits of an H.264 profile\n"
@@ -418,7 +407,7 @@ static void help( x264_param_t *defaults, int longhelp )
         "                                  - high10:\n"
         "                                    No lossless.\n"
         "                                    Support for bit depth 8-10.\n" );
-        else H0( "                                  - baseline,main,high,high10\n" );
+        else H0( "                                  - baseline, main, high, high10\n" );
     H0( "      --preset                Use a preset to select encoding settings [medium]\n"
         "                                  Overridden by user settings.\n" );
     H2( "                                  - ultrafast:\n"
@@ -543,10 +532,10 @@ static void help( x264_param_t *defaults, int longhelp )
     H2( "      --constrained-intra     Enable constrained intra prediction.\n" );
     H0( "      --pulldown <string>     Use soft pulldown to change frame rate\n"
         "                                  - none, 22, 32, 64, double, triple, euro (requires cfr input)\n" );
-    H2( "      --fake-interlaced       Flag stream as interlaced but encode progressive.\n"
+    H0( "      --fake-interlaced       Flag stream as interlaced but encode progressive.\n"
         "                              Makes it possible to encode 25p and 30p Blu-Ray\n"
         "                              streams. Ignored in interlaced mode.\n" );
-    H2( "      --frame-packing <integer> For stereoscopic videos define frame arrangement\n"
+    H0( "      --frame-packing <integer> For stereoscopic videos define frame arrangement\n"
         "                                  - 0: checkerboard - pixels are alternatively from L and R\n"
         "                                  - 1: column alternation - L and R are interlaced by column\n"
         "                                  - 2: row alternation - L and R are interlaced by row\n"
@@ -705,9 +694,10 @@ static void help( x264_param_t *defaults, int longhelp )
     H2( "      --chromaloc <integer>   Specify chroma sample location (0 to 5) [%d]\n",
                                        defaults->vui.i_chroma_loc );
 
-    H2( "      --nal-hrd <string>      Signal HRD information (requires vbv-bufsize)\n"
-        "                                  - none, vbr, cbr (cbr not allowed in .mp4)\n" );
-    H2( "      --pic-struct            Force pic_struct in Picture Timing SEI\n" );
+    H0( "      --nal-hrd <string>      Signal HRD information (requires vbv-bufsize)\n"
+        "                                  - none, vbr, cbr, fakevbr, fakecbr \n"
+        "                                    (cbr and fakecbr not allowed in .mp4) \n" );
+    H0( "      --pic-struct            Force pic_struct in Picture Timing SEI\n" );
     H2( "      --crop-rect <string>    Add 'left,top,right,bottom' to the bitstream-level\n"
         "                              cropping rectangle\n" );
 
@@ -771,8 +761,11 @@ static void help( x264_param_t *defaults, int longhelp )
     H0( "\n" );
     H0( "Transport Stream muxing:\n" );
     H0( "\n" );
-    H0( "      --ts-muxrate <integer>  Transport Stream Bitrate in bits per second\n" );
-    H0( "      --ts-cbr                Write null packets to force Constant Bit rate\n" );
+    H0( "      --ts-muxrate <integer>   Transport Stream Bitrate in bits per second\n" );
+    H0( "      --ts-types   <string>    Specify TS type [\"%s\"]\n"
+        "                               - %s\n", ts_types[0], stringify_names( buf, ts_types ) );
+    H0( "      --ts-cbr                 Write null packets to force Constant Bit rate\n" );
+    H0( "      --ts-dvb-au              Write DVB AU_information field \n" );
     H0( "      --ts-video-pid <integer> PID of video stream\n" );
     H0( "      --ts-pmt-pid <integer>   PID of Program Map Table\n" );
     H0( "      --ts-pcr-pid <integer>   PID of Program Clock Reference\n" );
@@ -781,9 +774,12 @@ static void help( x264_param_t *defaults, int longhelp )
     H0( "\n" );
     H0( "The following CBR audio formats (with file extensions) are supported: \n" );
     H0( "\n" );
+#if 0
     H0( "     .mp2, .ac3, .latm. (.latm is created by qaac)\n" );
+#endif
+    H0( "     .mp2, .ac3\n" );
     H0( "\n" );
-    H0( "      --ts-extra <audio0>/<audio1>/<audio2>\n" );
+    H0( "      --ts-extra <audio0>|<audio1>|<audio2>\n" );
     H0( "\n" );
     H0( "Format of <audio>:\n" );
     H0( "\n" );
@@ -792,7 +788,7 @@ static void help( x264_param_t *defaults, int longhelp )
     H0( "\n" );
     H0( "Audio Options:\n" );
     H0( "\n" );
-    H0( "    filename <file> -         Mandatory. File name\n" );
+    H0( "    filename <file> -     Mandatory. File name\n" );
     H0( "    bitrate <integer> -   Mandatory. Bitrate in bits per second\n" );
     H0( "    lang <3 characters> - Optional. Language Code\n" );
     H0( "    pid <integer> -       Optional. PID of audio stream\n" );
@@ -835,8 +831,9 @@ enum
     OPT_TS_VIDEO_PID,
     OPT_TS_PMT_PID,
     OPT_TS_PCR_PID,
+    OPT_TS_TYPE,
     OPT_TS_EXTRA,
-    OPT_TS_DVB_AU
+    OPT_TS_DVB_AU,
 #endif
 } OptionsOPT;
 
@@ -997,11 +994,12 @@ static struct option long_options[] =
     { "dts-compress",      no_argument, NULL, OPT_DTS_COMPRESSION },
 #ifdef HAVE_LIBMPEGTS
     { "ts-muxrate",  required_argument, NULL, OPT_TS_MUXRATE },
+    { "ts-type",     required_argument, NULL, OPT_TS_TYPE},
     { "ts-cbr",            no_argument, NULL, OPT_TS_CBR },
+    { "ts-dvb-au",         no_argument, NULL, OPT_TS_DVB_AU },
     { "ts-video-pid", required_argument, NULL, OPT_TS_VIDEO_PID },
     { "ts-pmt-pid",  required_argument, NULL, OPT_TS_PMT_PID },
     { "ts-pcr-pid",  required_argument, NULL, OPT_TS_PCR_PID },
-    { "ts-dvb-au",         no_argument, NULL, OPT_TS_DVB_AU },
     { "ts-extra",    required_argument, NULL, OPT_TS_EXTRA },
 #endif
     {0, 0, 0, 0}
@@ -1019,13 +1017,13 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
         output = mp4_output;
         param->b_annexb = 0;
         param->b_repeat_headers = 0;
-        if( param->i_nal_hrd == X264_NAL_HRD_CBR )
+        if( param->i_nal_hrd == X264_NAL_HRD_CBR || param->i_nal_hrd == X264_NAL_HRD_FAKECBR )
         {
-            x264_cli_log( "x264", X264_LOG_WARNING, "cbr nal-hrd is not compatible with mp4\n" );
-            param->i_nal_hrd = X264_NAL_HRD_VBR;
+            x264_cli_log( "obevod", X264_LOG_WARNING, "cbr nal-hrd is not compatible with mp4\n" );
+            param->i_nal_hrd = param->i_nal_hrd == X264_NAL_HRD_CBR ? X264_NAL_HRD_VBR : X264_NAL_HRD_FAKECBR;
         }
 #else
-        x264_cli_log( "x264", X264_LOG_ERROR, "not compiled with MP4 output support\n" );
+        x264_cli_log( "obevod", X264_LOG_ERROR, "not compiled with MP4 output support\n" );
         return -1;
 #endif
     }
@@ -1043,7 +1041,7 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
     }
     else if( !strcasecmp( ext, "ts" ) )
     {
-#ifdef HAVE_LIBMPEGTS
+#if HAVE_LIBMPEGTS
         output = ts_output;
         param->b_aud = 1;
         if( !param->rc.i_vbv_buffer_size || !param->i_nal_hrd  )
@@ -1087,7 +1085,7 @@ static int select_input( const char *demuxer, char *used_demuxer, char *filename
         input = avs_input;
         module = "avs";
 #else
-        x264_cli_log( "x264", X264_LOG_ERROR, "not compiled with AVS input support\n" );
+        x264_cli_log( "obevod", X264_LOG_ERROR, "not compiled with AVS input support\n" );
         return -1;
 #endif
     }
@@ -1312,7 +1310,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 FAIL_IF_ERROR( !opt->qpfile, "can't open qpfile `%s'\n", optarg )
                 if( !x264_is_regular_file( opt->qpfile ) )
                 {
-                    x264_cli_log( "x264", X264_LOG_ERROR, "qpfile incompatible with non-regular file `%s'\n", optarg );
+                    x264_cli_log( "obevod", X264_LOG_ERROR, "qpfile incompatible with non-regular file `%s'\n", optarg );
                     fclose( opt->qpfile );
                     return -1;
                 }
@@ -1341,7 +1339,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 param->b_visualize = 1;
                 b_exit_on_ctrl_c = 1;
 #else
-                x264_cli_log( "x264", X264_LOG_WARNING, "not compiled with visualization support\n" );
+                x264_cli_log( "obevod", X264_LOG_WARNING, "not compiled with visualization support\n" );
 #endif
                 break;
             case OPT_TUNE:
@@ -1395,8 +1393,14 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
             case OPT_TS_MUXRATE:
                 output_opt.i_ts_muxrate = atoi( optarg );
                 break;
+            case OPT_TS_TYPE:
+                FAIL_IF_ERROR( parse_enum_value( optarg, ts_types, &output_opt.i_ts_type ), "Unknown ts type `%s'\n", optarg )
+                break;
             case OPT_TS_CBR:
                 output_opt.b_ts_cbr = 1;
+                break;
+            case OPT_TS_DVB_AU:
+                output_opt.b_ts_dvb_au = 1;
                 break;
             case OPT_TS_VIDEO_PID:
                 output_opt.i_ts_video_pid = atoi( optarg );
@@ -1409,9 +1413,6 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 break;
             case OPT_TS_EXTRA:
                 ts_extra = optarg;
-                break;
-            case OPT_TS_DVB_AU:
-                output_opt.b_ts_dvb_au = 1;
                 break;
 #endif
             default:
@@ -1439,11 +1440,11 @@ generic_option:
         if( b_error )
         {
             const char *name = long_options_index > 0 ? long_options[long_options_index].name : argv[optind-2];
-            x264_cli_log( "x264", X264_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg );
+            x264_cli_log( "obevod", X264_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg );
             return -1;
         }
     }
-
+#ifdef HAVE_LIBMPEGTS
     if( ts_extra )
     {
         int i = 0;
@@ -1503,7 +1504,7 @@ generic_option:
         }
         output_opt.num_extra_streams = i;
     }
-
+#endif
     /* If first pass mode is used, apply faster settings. */
     if( b_turbo )
         x264_param_apply_fastfirstpass( param );
@@ -1629,7 +1630,7 @@ generic_option:
 
     if( !b_user_interlaced && info.interlaced )
     {
-        x264_cli_log( "x264", X264_LOG_WARNING, "input appears to be interlaced, enabling %cff interlaced mode.\n"
+        x264_cli_log( "obevod", X264_LOG_WARNING, "input appears to be interlaced, enabling %cff interlaced mode.\n"
                       "                If you want otherwise, use --no-interlaced or --%cff\n",
                       info.tff ? 't' : 'b', info.tff ? 'b' : 't' );
         param->b_interlaced = 1;
@@ -1686,7 +1687,7 @@ static void parse_qpfile( cli_opt_t *opt, x264_picture_t *pic, int i_frame )
         else ret = 0;
         if( ret < 2 || qp < -1 || qp > QP_MAX )
         {
-            x264_cli_log( "x264", X264_LOG_ERROR, "can't parse qpfile for frame %d\n", i_frame );
+            x264_cli_log( "obevod", X264_LOG_ERROR, "can't parse qpfile for frame %d\n", i_frame );
             fclose( opt->qpfile );
             opt->qpfile = NULL;
             break;
@@ -1789,7 +1790,7 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
 
     if( ( h = x264_encoder_open( param ) ) == NULL )
     {
-        x264_cli_log( "x264", X264_LOG_ERROR, "x264_encoder_open failed\n" );
+        x264_cli_log( "obevod", X264_LOG_ERROR, "x264_encoder_open failed\n" );
         filter.free( opt->hin );
         return -1;
     }
@@ -1798,7 +1799,7 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
 
     if( output.set_param( opt->hout, param ) )
     {
-        x264_cli_log( "x264", X264_LOG_ERROR, "can't set outfile param\n" );
+        x264_cli_log( "obevod", X264_LOG_ERROR, "can't set outfile param\n" );
         filter.free( opt->hin );
         output.close_file( opt->hout, largest_pts, second_largest_pts );
         return -1;
@@ -1847,10 +1848,10 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
         if( pic.i_pts <= largest_pts )
         {
             if( cli_log_level >= X264_LOG_DEBUG || pts_warning_cnt < MAX_PTS_WARNING )
-                x264_cli_log( "x264", X264_LOG_WARNING, "non-strictly-monotonic pts at frame %d (%"PRId64" <= %"PRId64")\n",
+                x264_cli_log( "obevod", X264_LOG_WARNING, "non-strictly-monotonic pts at frame %d (%"PRId64" <= %"PRId64")\n",
                              i_frame, pic.i_pts, largest_pts );
             else if( pts_warning_cnt == MAX_PTS_WARNING )
-                x264_cli_log( "x264", X264_LOG_WARNING, "too many nonmonotonic pts warnings, suppressing further ones\n" );
+                x264_cli_log( "obevod", X264_LOG_WARNING, "too many nonmonotonic pts warnings, suppressing further ones\n" );
             pts_warning_cnt++;
             pic.i_pts = largest_pts + ticks_per_frame;
         }
@@ -1900,7 +1901,7 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
             print_status( i_start, i_frame_output, param->i_frame_total, i_file, param, 2 * last_dts - prev_dts - first_dts );
     }
     if( pts_warning_cnt >= MAX_PTS_WARNING && cli_log_level < X264_LOG_DEBUG )
-        x264_cli_log( "x264", X264_LOG_WARNING, "%d suppressed nonmonotonic pts warnings\n", pts_warning_cnt-MAX_PTS_WARNING );
+        x264_cli_log( "obevod", X264_LOG_WARNING, "%d suppressed nonmonotonic pts warnings\n", pts_warning_cnt-MAX_PTS_WARNING );
 
     /* duration algorithm fails when only 1 frame is output */
     if( i_frame_output == 1 )
