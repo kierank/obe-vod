@@ -202,11 +202,10 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
         if( !p_ts->opt.extra_streams[i].fp )
         {
             fprintf( stderr, "[ts] Cannot Open file %s\n", p_ts->opt.extra_streams[i].filename );
-            free( p_ts );
             return -1;
         }
 
-        if( p_ts->opt.extra_streams[i].lang )
+        if( strlen( p_ts->opt.extra_streams[i].lang ) )
         {
             streams[1+i].write_lang_code = 1;
             strcpy( streams[1+i].lang_code, p_ts->opt.extra_streams[i].lang );
@@ -218,7 +217,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
 
         int file_len = strlen( p_ts->opt.extra_streams[i].filename );
 
-	if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "ac3" ) )
+        if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "ac3" ) )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_AC3;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_PRIVATE_1;
@@ -232,6 +231,8 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             streams[1+i].max_frame_size = (int)(((double)MP2_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
             p_ts->opt.extra_streams[i].increment = (int)(((double)MP2_NUM_SAMPLES * 90000LL / 48000) + 0.5);
         }
+        // TODO aac adts
+#if 0
         else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_LATM;
@@ -239,6 +240,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             streams[1+i].max_frame_size = (int)(((double)AAC_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
             p_ts->opt.extra_streams[i].increment = (int)(((double)AAC_NUM_SAMPLES * 90000LL / 48000) + 0.5);
         }
+#endif
     }
 
     params.programs = program;
@@ -246,8 +248,11 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     params.ts_id = ts_id;
     params.muxrate =  p_ts->opt.i_ts_muxrate;
     params.cbr = p_ts->opt.b_ts_cbr;
-    params.ts_type = TS_TYPE_DVB;
+    params.ts_type = p_ts->opt.i_ts_type;
 
+    program[0].cablelabs_is_3d = params.ts_type == TS_TYPE_CABLELABS && 
+                                 ( p_param->i_frame_packing == 3 || p_param->i_frame_packing == 4 );
+    
     if( ts_setup_transport_stream( p_ts->w, &params ) < 0 )
         return -1;
 
@@ -295,6 +300,11 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
 
     int frame_idx = 1;
     ts_frame_t *frame = calloc( 1, (total_audio_frames + 1) * sizeof(ts_frame_t) );
+    if( !frame )
+    {
+        fprintf( stderr, "Malloc Failed" );
+        return -1;
+    }
 
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
@@ -317,6 +327,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
                 frame[frame_idx].data = malloc( cur_stream->max_frame_size );
                 fread( frame[frame_idx].data, 1, cur_stream->max_frame_size, p_ts->opt.extra_streams[i].fp );
             }
+
             frame[frame_idx].size = cur_stream->max_frame_size;
             frame[frame_idx].pid = cur_stream->pid;
             frame[frame_idx].dts = p_ts->opt.extra_streams[i].next_audio_pts;
@@ -382,6 +393,8 @@ static int close_file( hnd_t handle, int64_t largest_pts, int64_t second_largest
 
     if( ts_close_writer( p_ts->w ) < 0 )
         return -1;
+
+    fclose( p_ts->fp );
 
     if( p_ts->streams )
         free( p_ts->streams );
