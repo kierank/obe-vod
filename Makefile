@@ -142,8 +142,7 @@ DEP  = depend
 
 .PHONY: all default fprofiled clean distclean install uninstall dox test testclean
 
-default: $(DEP) x264$(EXE)
-	mv x264$(EXE) obevod$(EXE)
+default: $(DEP) obevod$(EXE)
 
 libx264.a: .depend $(OBJS) $(OBJASM)
 	$(AR) rc libx264.a $(OBJS) $(OBJASM)
@@ -152,7 +151,7 @@ libx264.a: .depend $(OBJS) $(OBJASM)
 $(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(CC) -shared -o $@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
-x264$(EXE): $(OBJCLI) libx264.a
+obevod$(EXE): $(OBJCLI) libx264.a
 	$(CC) -o $@ $+ $(LDFLAGSCLI) $(LDFLAGS)
 
 checkasm: tools/checkasm.o libx264.a
@@ -192,15 +191,15 @@ OPT7 = --frames 50 -q0 -m2 -r1 --me hex --no-cabac
 ifeq (,$(VIDS))
 fprofiled:
 	@echo 'usage: make fprofiled VIDS="infile1 infile2 ..."'
-	@echo 'where infiles are anything that x264 understands,'
+	@echo 'where infiles are anything that obevod understands,'
 	@echo 'i.e. YUV with resolution in the filename, y4m, or avisynth.'
 else
 fprofiled:
 	$(MAKE) clean
 	mv config.mak config.mak2
 	sed -e 's/CFLAGS.*/& -fprofile-generate/; s/LDFLAGS.*/& -fprofile-generate/' config.mak2 > config.mak
-	$(MAKE) x264$(EXE)
-	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7, ./x264$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
+	$(MAKE) obevod$(EXE)
+	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7, ./obevod$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
 	rm -f $(SRC2:%.c=%.o)
 	sed -e 's/CFLAGS.*/& -fprofile-use/; s/LDFLAGS.*/& -fprofile-use/' config.mak2 > config.mak
 	$(MAKE)
@@ -209,39 +208,29 @@ fprofiled:
 endif
 
 clean:
-	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a x264 x264.exe .depend TAGS
+	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a obevod obevod.exe .depend TAGS
 	rm -f checkasm checkasm.exe tools/checkasm.o tools/checkasm-a.o
 	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno)
 	- sed -e 's/ *-fprofile-\(generate\|use\)//g' config.mak > config.mak2 && mv config.mak2 config.mak
 
 distclean: clean
-	rm -f config.mak x264_config.h config.h config.log x264.pc
+	rm -f config.mak x264_config.h config.h config.log obevod.pc
 	rm -rf test/
 
-install: x264$(EXE) $(SONAME)
+install: obevod$(EXE) $(SONAME)
 	install -d $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(includedir)
 	install -d $(DESTDIR)$(libdir)
 	install -d $(DESTDIR)$(libdir)/pkgconfig
-	install -m 644 x264.h $(DESTDIR)$(includedir)
-	install -m 644 x264_config.h $(DESTDIR)$(includedir)
-	install -m 644 libx264.a $(DESTDIR)$(libdir)
-	install -m 644 x264.pc $(DESTDIR)$(libdir)/pkgconfig
-	install x264$(EXE) $(DESTDIR)$(bindir)
-	$(RANLIB) $(DESTDIR)$(libdir)/libx264.a
-ifeq ($(SYS),MINGW)
-	$(if $(SONAME), install -m 755 $(SONAME) $(DESTDIR)$(bindir))
-else
-	$(if $(SONAME), ln -f -s $(SONAME) $(DESTDIR)$(libdir)/libx264.$(SOSUFFIX))
-	$(if $(SONAME), install -m 755 $(SONAME) $(DESTDIR)$(libdir))
-endif
+	install -m 644 obevod.pc $(DESTDIR)$(libdir)/pkgconfig
+	install obevod$(EXE) $(DESTDIR)$(bindir)
 	$(if $(IMPLIBNAME), install -m 644 $(IMPLIBNAME) $(DESTDIR)$(libdir))
+ifneq ($(SYS),MINGW)
 	ldconfig
+endif
 
 uninstall:
-	rm -f $(DESTDIR)$(includedir)/x264.h $(DESTDIR)$(includedir)/x264_config.h $(DESTDIR)$(libdir)/libx264.a
-	rm -f $(DESTDIR)$(bindir)/x264$(EXE) $(DESTDIR)$(libdir)/pkgconfig/x264.pc
-	$(if $(SONAME), rm -f $(DESTDIR)$(libdir)/$(SONAME) $(DESTDIR)$(libdir)/libx264.$(SOSUFFIX))
+	rm -f $(DESTDIR)$(bindir)/obevod$(EXE) $(DESTDIR)$(libdir)/pkgconfig/obevod.pc
 
 etags: TAGS
 

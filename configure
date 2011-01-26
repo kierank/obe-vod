@@ -21,7 +21,6 @@ echo "  --enable-debug           adds -g, doesn't strip"
 echo "  --enable-gprof           adds -pg, doesn't strip"
 echo "  --enable-visualize       enables visualization (X11 only)"
 echo "  --enable-pic             build position-independent code"
-echo "  --enable-shared          build libx264.so"
 echo "  --bit-depth=BIT_DEPTH    sets output bit depth (8-10), default 8"
 echo "  --extra-asflags=EASFLAGS add EASFLAGS to ASFLAGS"
 echo "  --extra-cflags=ECFLAGS   add ECFLAGS to CFLAGS"
@@ -250,9 +249,6 @@ for opt do
             ;;
         --enable-pic)
             pic="yes"
-            ;;
-        --enable-shared)
-            shared="yes"
             ;;
         --enable-visualize)
             vis="yes"
@@ -849,15 +845,15 @@ fi
 
 pclibs="-L$libdir -lx264 $libpthread"
 
-cat > x264.pc << EOF
+cat > obevod.pc << EOF
 prefix=$prefix
 exec_prefix=$exec_prefix
 libdir=$libdir
 includedir=$includedir
 
-Name: x264
-Description: H.264 (MPEG4 AVC) encoder library
-Version: $(grep POINTVER < config.h | sed -e 's/.* "//; s/".*//')
+Name: obevod
+Description: Open Broadcast Encoder VoD encoder
+Version: Based on x264 version $(grep POINTVER < config.h | sed -e 's/.* "//; s/".*//')
 Libs: $pclibs
 Cflags: -I$includedir
 EOF
