@@ -231,7 +231,10 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             streams[1+i].max_frame_size = (int)(((double)MP2_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
             p_ts->opt.extra_streams[i].increment = (int)(((double)MP2_NUM_SAMPLES * 90000LL / 48000) + 0.5);
         }
-        // TODO aac adts
+        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) )
+        {
+            // TODO aac adts
+        }
 #if 0
         else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
         {
