@@ -231,13 +231,11 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             streams[1+i].max_frame_size = (int)(((double)MP2_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
             p_ts->opt.extra_streams[i].increment = (int)(((double)MP2_NUM_SAMPLES * 90000LL / 48000) + 0.5);
         }
-        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) )
+        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) ||
+	         !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
         {
-            // TODO aac adts
         }
 #if 0
-        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
-        {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_LATM;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
             streams[1+i].max_frame_size = (int)(((double)AAC_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
@@ -253,9 +251,9 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     params.cbr = p_ts->opt.b_ts_cbr;
     params.ts_type = p_ts->opt.i_ts_type;
 
-    program[0].cablelabs_is_3d = params.ts_type == TS_TYPE_CABLELABS && 
+    program[0].cablelabs_is_3d = params.ts_type == TS_TYPE_CABLELABS &&
                                  ( p_param->i_frame_packing == 3 || p_param->i_frame_packing == 4 );
-    
+
     if( ts_setup_transport_stream( p_ts->w, &params ) < 0 )
         return -1;
 

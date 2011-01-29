@@ -40,7 +40,7 @@
 #include "output/output.h"
 #include "filters/filters.h"
 
-#define FAIL_IF_ERROR( cond, ... ) FAIL_IF_ERR( cond, "obevod", __VA_ARGS__ )
+#define FAIL_IF_ERROR( cond, ... ) FAIL_IF_ERR( cond, "obe-vod", __VA_ARGS__ )
 
 #ifdef _WIN32
 #include <windows.h>
@@ -216,9 +216,9 @@ void x264_cli_printf( int i_level, const char *fmt, ... )
 static void print_version_info()
 {
 #ifdef X264_POINTVER
-    printf( "x264 "X264_POINTVER"\n" );
+    printf( "obe-vod "X264_POINTVER"\n" );
 #else
-    printf( "x264 0.%d.X\n", X264_BUILD );
+    printf( "obe-vod 0.%d.X\n", X264_BUILD );
 #endif
 #if HAVE_SWSCALE
     printf( "(libswscale %d.%d.%d)\n", LIBSWSCALE_VERSION_MAJOR, LIBSWSCALE_VERSION_MINOR, LIBSWSCALE_VERSION_MICRO );
@@ -236,7 +236,7 @@ static void print_version_info()
     printf( "using a non-gcc compiler\n" );
 #endif
     printf( "configuration: --bit-depth=%d\n", x264_bit_depth );
-    printf( "x264 license: " );
+    printf( "obe-vod license: " );
 #if HAVE_GPL
     printf( "GPL version 2 or later\n" );
 #else
@@ -355,7 +355,7 @@ static void help( x264_param_t *defaults, int longhelp )
 #define H1 if(longhelp>=1) printf
 #define H2 if(longhelp==2) printf
     H0( "OBE VoD encoder based on x264 core:%d%s\n"
-        "Syntax: obevod [options] -o outfile infile\n"
+        "Syntax: obe-vod [options] -o outfile infile\n"
         "\n"
         "Infile can be raw (in which case resolution is required),\n"
         "  or YUV4MPEG (*.y4m),\n"
@@ -1035,11 +1035,11 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
         param->b_repeat_headers = 0;
         if( param->i_nal_hrd == X264_NAL_HRD_CBR || param->i_nal_hrd == X264_NAL_HRD_FAKECBR )
         {
-            x264_cli_log( "obevod", X264_LOG_WARNING, "cbr nal-hrd is not compatible with mp4\n" );
+            x264_cli_log( "obe-vod", X264_LOG_WARNING, "cbr nal-hrd is not compatible with mp4\n" );
             param->i_nal_hrd = param->i_nal_hrd == X264_NAL_HRD_CBR ? X264_NAL_HRD_VBR : X264_NAL_HRD_FAKECBR;
         }
 #else
-        x264_cli_log( "obevod", X264_LOG_ERROR, "not compiled with MP4 output support\n" );
+        x264_cli_log( "obe-vod", X264_LOG_ERROR, "not compiled with MP4 output support\n" );
         return -1;
 #endif
     }
@@ -1062,11 +1062,11 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
         param->b_aud = 1;
         if( !param->rc.i_vbv_buffer_size || !param->i_nal_hrd  )
         {
-            fprintf( stderr, "x264 [error]: transport stream muxing must have VBV and NAL HRD parameters enabled \n" );
+            fprintf( stderr, "obe-vod [error]: transport stream muxing must have VBV and NAL HRD parameters enabled \n" );
             return -1;
         }
 #else
-        fprintf( stderr, "x264 [error]: not compiled with TS output support\n" );
+        fprintf( stderr, "obe-vod [error]: not compiled with TS output support\n" );
         return -1;
 #endif
     }
@@ -1101,7 +1101,7 @@ static int select_input( const char *demuxer, char *used_demuxer, char *filename
         input = avs_input;
         module = "avs";
 #else
-        x264_cli_log( "obevod", X264_LOG_ERROR, "not compiled with AVS input support\n" );
+        x264_cli_log( "obe-vod", X264_LOG_ERROR, "not compiled with AVS input support\n" );
         return -1;
 #endif
     }
@@ -1325,7 +1325,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 FAIL_IF_ERROR( !opt->qpfile, "can't open qpfile `%s'\n", optarg )
                 if( !x264_is_regular_file( opt->qpfile ) )
                 {
-                    x264_cli_log( "obevod", X264_LOG_ERROR, "qpfile incompatible with non-regular file `%s'\n", optarg );
+                    x264_cli_log( "obe-vod", X264_LOG_ERROR, "qpfile incompatible with non-regular file `%s'\n", optarg );
                     fclose( opt->qpfile );
                     return -1;
                 }
@@ -1354,7 +1354,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 param->b_visualize = 1;
                 b_exit_on_ctrl_c = 1;
 #else
-                x264_cli_log( "obevod", X264_LOG_WARNING, "not compiled with visualization support\n" );
+                x264_cli_log( "obe-vod", X264_LOG_WARNING, "not compiled with visualization support\n" );
 #endif
                 break;
             case OPT_TUNE:
@@ -1458,7 +1458,7 @@ generic_option:
         if( b_error )
         {
             const char *name = long_options_index > 0 ? long_options[long_options_index].name : argv[optind-2];
-            x264_cli_log( "obevod", X264_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg );
+            x264_cli_log( "obe-vod", X264_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg );
             return -1;
         }
     }
@@ -1580,7 +1580,7 @@ generic_option:
     {
         if( thread_input.open_file( NULL, &opt->hin, &info, NULL ) )
         {
-            fprintf( stderr, "x264 [error]: threaded input failed\n" );
+            fprintf( stderr, "obe-vod [error]: threaded input failed\n" );
             return -1;
         }
         input = thread_input;
@@ -1648,7 +1648,7 @@ generic_option:
 
     if( !b_user_interlaced && info.interlaced )
     {
-        x264_cli_log( "obevod", X264_LOG_WARNING, "input appears to be interlaced, enabling %cff interlaced mode.\n"
+        x264_cli_log( "obe-vod", X264_LOG_WARNING, "input appears to be interlaced, enabling %cff interlaced mode.\n"
                       "                If you want otherwise, use --no-interlaced or --%cff\n",
                       info.tff ? 't' : 'b', info.tff ? 'b' : 't' );
         param->b_interlaced = 1;
@@ -1705,7 +1705,7 @@ static void parse_qpfile( cli_opt_t *opt, x264_picture_t *pic, int i_frame )
         else ret = 0;
         if( ret < 2 || qp < -1 || qp > QP_MAX )
         {
-            x264_cli_log( "obevod", X264_LOG_ERROR, "can't parse qpfile for frame %d\n", i_frame );
+            x264_cli_log( "obe-vod", X264_LOG_ERROR, "can't parse qpfile for frame %d\n", i_frame );
             fclose( opt->qpfile );
             opt->qpfile = NULL;
             break;
@@ -1722,7 +1722,7 @@ static int encode_frame( x264_t *h, hnd_t hout, x264_picture_t *pic, int64_t *la
 
     i_frame_size = x264_encoder_encode( h, &nal, &i_nal, pic, &pic_out );
 
-    FAIL_IF_ERROR( i_frame_size < 0, "x264_encoder_encode failed\n" );
+    FAIL_IF_ERROR( i_frame_size < 0, "obe-vod_encoder_encode failed\n" );
 
     if( i_frame_size )
     {
@@ -1746,13 +1746,13 @@ static void print_status( int64_t i_start, int i_frame, int i_frame_total, int64
     if( i_frame_total )
     {
         int eta = i_elapsed * (i_frame_total - i_frame) / ((int64_t)i_frame * 1000000);
-        sprintf( buf, "x264 [%.1f%%] %d/%d frames, %.2f fps, %.2f kb/s, eta %d:%02d:%02d",
+        sprintf( buf, "obe-vod [%.1f%%] %d/%d frames, %.2f fps, %.2f kb/s, eta %d:%02d:%02d",
                  100. * i_frame / i_frame_total, i_frame, i_frame_total, fps, bitrate,
                  eta/3600, (eta/60)%60, eta%60 );
     }
     else
     {
-        sprintf( buf, "x264 %d frames: %.2f fps, %.2f kb/s", i_frame, fps, bitrate );
+        sprintf( buf, "obe-vod %d frames: %.2f fps, %.2f kb/s", i_frame, fps, bitrate );
     }
     fprintf( stderr, "%s  \r", buf+5 );
     SetConsoleTitle( buf );
@@ -1771,7 +1771,7 @@ static void convert_cli_to_lib_pic( x264_picture_t *lib, cli_pic_t *cli )
 #define FAIL_IF_ERROR2( cond, ... )\
 if( cond )\
 {\
-    x264_cli_log( "x264", X264_LOG_ERROR, __VA_ARGS__ );\
+    x264_cli_log( "obe-vod", X264_LOG_ERROR, __VA_ARGS__ );\
     retval = -1;\
     goto fail;\
 }
@@ -1817,7 +1817,7 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
     }
 
     h = x264_encoder_open( param );
-    FAIL_IF_ERROR2( !h, "x264_encoder_open failed\n" );
+    FAIL_IF_ERROR2( !h, "obe-vod_encoder_open failed\n" );
 
     x264_encoder_parameters( h, param );
 
@@ -1835,7 +1835,7 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
         x264_nal_t *headers;
         int i_nal;
 
-        FAIL_IF_ERROR2( x264_encoder_headers( h, &headers, &i_nal ) < 0, "x264_encoder_headers failed\n" )
+        FAIL_IF_ERROR2( x264_encoder_headers( h, &headers, &i_nal ) < 0, "obe-vod_encoder_headers failed\n" )
         FAIL_IF_ERROR2( (i_file = output.write_headers( opt->hout, headers )) < 0, "error writing headers to output file\n" );
     }
 
@@ -1865,10 +1865,10 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
         if( pic.i_pts <= largest_pts )
         {
             if( cli_log_level >= X264_LOG_DEBUG || pts_warning_cnt < MAX_PTS_WARNING )
-                x264_cli_log( "obevod", X264_LOG_WARNING, "non-strictly-monotonic pts at frame %d (%"PRId64" <= %"PRId64")\n",
+                x264_cli_log( "obe-vod", X264_LOG_WARNING, "non-strictly-monotonic pts at frame %d (%"PRId64" <= %"PRId64")\n",
                              i_frame, pic.i_pts, largest_pts );
             else if( pts_warning_cnt == MAX_PTS_WARNING )
-                x264_cli_log( "obevod", X264_LOG_WARNING, "too many nonmonotonic pts warnings, suppressing further ones\n" );
+                x264_cli_log( "obe-vod", X264_LOG_WARNING, "too many nonmonotonic pts warnings, suppressing further ones\n" );
             pts_warning_cnt++;
             pic.i_pts = largest_pts + ticks_per_frame;
         }
@@ -1925,7 +1925,7 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
     }
 fail:
     if( pts_warning_cnt >= MAX_PTS_WARNING && cli_log_level < X264_LOG_DEBUG )
-        x264_cli_log( "obevod", X264_LOG_WARNING, "%d suppressed nonmonotonic pts warnings\n", pts_warning_cnt-MAX_PTS_WARNING );
+        x264_cli_log( "obe-vod", X264_LOG_WARNING, "%d suppressed nonmonotonic pts warnings\n", pts_warning_cnt-MAX_PTS_WARNING );
 
     /* duration algorithm fails when only 1 frame is output */
     if( i_frame_output == 1 )

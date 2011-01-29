@@ -142,7 +142,7 @@ DEP  = depend
 
 .PHONY: all default fprofiled clean distclean install uninstall dox test testclean
 
-default: $(DEP) obevod$(EXE)
+default: $(DEP) obe-vod$(EXE)
 
 libx264.a: .depend $(OBJS) $(OBJASM)
 	$(AR) rc libx264.a $(OBJS) $(OBJASM)
@@ -151,7 +151,7 @@ libx264.a: .depend $(OBJS) $(OBJASM)
 $(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(CC) -shared -o $@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
-obevod$(EXE): $(OBJCLI) libx264.a
+obe-vod$(EXE): $(OBJCLI) libx264.a
 	$(CC) -o $@ $+ $(LDFLAGSCLI) $(LDFLAGS)
 
 checkasm: tools/checkasm.o libx264.a
@@ -191,15 +191,15 @@ OPT7 = --frames 50 -q0 -m2 -r1 --me hex --no-cabac
 ifeq (,$(VIDS))
 fprofiled:
 	@echo 'usage: make fprofiled VIDS="infile1 infile2 ..."'
-	@echo 'where infiles are anything that obevod understands,'
+	@echo 'where infiles are anything that obe-vod understands,'
 	@echo 'i.e. YUV with resolution in the filename, y4m, or avisynth.'
 else
 fprofiled:
 	$(MAKE) clean
 	mv config.mak config.mak2
 	sed -e 's/CFLAGS.*/& -fprofile-generate/; s/LDFLAGS.*/& -fprofile-generate/' config.mak2 > config.mak
-	$(MAKE) obevod$(EXE)
-	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7, ./obevod$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
+	$(MAKE) obe-vod$(EXE)
+	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7, ./obe-vod$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
 	rm -f $(SRC2:%.c=%.o)
 	sed -e 's/CFLAGS.*/& -fprofile-use/; s/LDFLAGS.*/& -fprofile-use/' config.mak2 > config.mak
 	$(MAKE)
@@ -208,29 +208,28 @@ fprofiled:
 endif
 
 clean:
-	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a obevod obevod.exe .depend TAGS
+	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a obe-vod obe-vod.exe .depend TAGS
 	rm -f checkasm checkasm.exe tools/checkasm.o tools/checkasm-a.o
 	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno)
 	- sed -e 's/ *-fprofile-\(generate\|use\)//g' config.mak > config.mak2 && mv config.mak2 config.mak
 
 distclean: clean
-	rm -f config.mak x264_config.h config.h config.log obevod.pc
+	rm -f config.mak x264_config.h config.h config.log
 	rm -rf test/
 
-install: obevod$(EXE) $(SONAME)
+install: obe-vod$(EXE) $(SONAME)
 	install -d $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(includedir)
 	install -d $(DESTDIR)$(libdir)
 	install -d $(DESTDIR)$(libdir)/pkgconfig
-	install -m 644 obevod.pc $(DESTDIR)$(libdir)/pkgconfig
-	install obevod$(EXE) $(DESTDIR)$(bindir)
+	install obe-vod$(EXE) $(DESTDIR)$(bindir)
 	$(if $(IMPLIBNAME), install -m 644 $(IMPLIBNAME) $(DESTDIR)$(libdir))
 ifneq ($(SYS),MINGW)
 	ldconfig
 endif
 
 uninstall:
-	rm -f $(DESTDIR)$(bindir)/obevod$(EXE) $(DESTDIR)$(libdir)/pkgconfig/obevod.pc
+	rm -f $(DESTDIR)$(bindir)/obe-vod$(EXE)
 
 etags: TAGS
 

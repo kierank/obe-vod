@@ -845,19 +845,6 @@ fi
 
 pclibs="-L$libdir -lx264 $libpthread"
 
-cat > obevod.pc << EOF
-prefix=$prefix
-exec_prefix=$exec_prefix
-libdir=$libdir
-includedir=$includedir
-
-Name: obevod
-Description: Open Broadcast Encoder VoD encoder
-Version: Based on x264 version $(grep POINTVER < config.h | sed -e 's/.* "//; s/".*//')
-Libs: $pclibs
-Cflags: -I$includedir
-EOF
-
 filters="crop select_every"
 gpl_filters=""
 [ $swscale = yes ] && filters="resize $filters"
