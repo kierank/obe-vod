@@ -219,9 +219,6 @@ distclean: clean
 
 install: obe-vod$(EXE) $(SONAME)
 	install -d $(DESTDIR)$(bindir)
-	install -d $(DESTDIR)$(includedir)
-	install -d $(DESTDIR)$(libdir)
-	install -d $(DESTDIR)$(libdir)/pkgconfig
 	install obe-vod$(EXE) $(DESTDIR)$(bindir)
 	$(if $(IMPLIBNAME), install -m 644 $(IMPLIBNAME) $(DESTDIR)$(libdir))
 ifneq ($(SYS),MINGW)
