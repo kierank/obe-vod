@@ -745,7 +745,8 @@ DEQUANT_DC sse2  , w
 ; void denoise_dct( int32_t *dct, uint32_t *sum, uint32_t *offset, int size )
 ;-----------------------------------------------------------------------------
 %macro DENOISE_DCT 1-2 0
-cglobal denoise_dct_%1, 4,4,%2
+cglobal denoise_dct_%1, 4,5,%2
+    mov       r4d, [r0] ; backup DC coefficient
     pxor      m6, m6
 .loop:
     sub       r3, mmsize/2
@@ -772,7 +773,8 @@ cglobal denoise_dct_%1, 4,4,%2
     mova      [r1+r3*4+0*mmsize], m4
     mova      [r1+r3*4+1*mmsize], m5
     jg .loop
-    REP_RET
+    mov       [r0], r4d ; restore DC coefficient
+    RET
 %endmacro
 
 %define PABSD PABSD_MMX
@@ -793,7 +795,8 @@ DENOISE_DCT ssse3, 8
 ; void denoise_dct( int16_t *dct, uint32_t *sum, uint16_t *offset, int size )
 ;-----------------------------------------------------------------------------
 %macro DENOISE_DCT 1-2 0
-cglobal denoise_dct_%1, 4,4,%2
+cglobal denoise_dct_%1, 4,5,%2
+    movzx     r4d, word [r0]
     pxor      m6, m6
 .loop:
     sub       r3, mmsize
@@ -820,7 +823,8 @@ cglobal denoise_dct_%1, 4,4,%2
     mova      [r1+r3*4+2*mmsize], m3
     mova      [r1+r3*4+3*mmsize], m1
     jg .loop
-    REP_RET
+    mov       [r0], r4w
+    RET
 %endmacro
 
 %define PABSW PABSW_MMX
