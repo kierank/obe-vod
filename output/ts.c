@@ -131,19 +131,19 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     {
         if( p_param->i_timebase_num == 1001 && p_param->i_timebase_den == 24000 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_23_976_FPS;
-	else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 24 )
+        else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 24 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_24_FPS;
-	else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 25 )
+        else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 25 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_25_FPS;
-	else if( p_param->i_timebase_num == 1001 && p_param->i_timebase_den == 30000 )
+        else if( p_param->i_timebase_num == 1001 && p_param->i_timebase_den == 30000 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_29_97_FPS;
-	else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 30 )
+        else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 30 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_30_FPS;
-	else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 50 )
+        else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 50 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_50_FPS;
-	else if( p_param->i_timebase_num == 1001 && p_param->i_timebase_den == 60000 )
+        else if( p_param->i_timebase_num == 1001 && p_param->i_timebase_den == 60000 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_59_94_FPS;
-	else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 60 )
+        else if( p_param->i_timebase_num == 1 && p_param->i_timebase_den == 60 )
             streams[0].dvb_au_frame_rate = LIBMPEGTS_DVB_AU_60_FPS;
         else
         {
@@ -231,12 +231,14 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             streams[1+i].max_frame_size = (int)(((double)MP2_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
             p_ts->opt.extra_streams[i].increment = (int)(((double)MP2_NUM_SAMPLES * 90000LL / 48000) + 0.5);
         }
-        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) ||
-	         !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
-        {
-        }
 #if 0
-            streams[1+i].stream_format = LIBMPEGTS_AUDIO_LATM;
+        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) ||
+                 !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
+        {
+            if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) )
+                streams[1+i].stream_format = LIBMPEGTS_AUDIO_ADTS;
+            else
+                streams[1+i].stream_format = LIBMPEGTS_AUDIO_LATM;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
             streams[1+i].max_frame_size = (int)(((double)AAC_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
             p_ts->opt.extra_streams[i].increment = (int)(((double)AAC_NUM_SAMPLES * 90000LL / 48000) + 0.5);
@@ -269,11 +271,12 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
 {
     ts_hnd_t *p_ts = handle;
     int64_t video_pts = (int64_t)((p_picture->hrd_timing.dpb_output_time * 90000LL) + 0.5);
-
     uint8_t *output = NULL;
     int len = 0;
-
+    int ret;
     int total_audio_frames = 0;
+    int frame_idx = 1;
+
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
         int64_t audio_pts;
@@ -299,11 +302,10 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
 
     p_ts->first = 1;
 
-    int frame_idx = 1;
     ts_frame_t *frame = calloc( 1, (total_audio_frames + 1) * sizeof(ts_frame_t) );
     if( !frame )
     {
-        fprintf( stderr, "Malloc Failed" );
+        fprintf( stderr, "Malloc Failed\n" );
         return -1;
     }
 
@@ -312,29 +314,59 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
         for( int j = 0; j < p_ts->opt.extra_streams[i].num_audio_frames; j++ )
         {
             ts_stream_t *cur_stream = &p_ts->streams[1+i];
-
-            if( cur_stream->stream_format == LIBMPEGTS_AUDIO_LATM )
+#if 0
+            if( cur_stream->stream_format == LIBMPEGTS_AUDIO_ADTS )
+            {
+                /* Read the adts fixed and variable header into temporary buffer */
+                uint8_t adts_header[7];
+                ret = fread( adts_header, 1, 7, p_ts->opt.extra_streams[i].fp );
+                int length = ((length_bytes[5] & 0x1f) << 5) | (length_bytes[6] >> 2);
+                frame[frame_idx].data = malloc( length + 7 );
+                memcpy( frame[frame_idx].data, length_bytes, 7 );
+                ret = fread( frame[frame_idx].data+7, 1, length, p_ts->opt.extra_streams[i].fp );
+            }
+            else if( cur_stream->stream_format == LIBMPEGTS_AUDIO_LATM )
             {
                 /* Read the length bytes into a temporary buffer */
                 uint8_t length_bytes[2];
-                fread( length_bytes, 1, 2, p_ts->opt.extra_streams[i].fp );
+                ret = fread( length_bytes, 1, 2, p_ts->opt.extra_streams[i].fp );
                 int length = ((length_bytes[0] & 0x1f) << 5) | length_bytes[1];
                 frame[frame_idx].data = malloc( length + 2 );
                 memcpy( frame[frame_idx].data, length_bytes, 2 );
-                fread( frame[frame_idx].data+2, 1, length, p_ts->opt.extra_streams[i].fp );
+                ret = fread( frame[frame_idx].data+2, 1, length, p_ts->opt.extra_streams[i].fp );
             }
             else
             {
-                frame[frame_idx].data = malloc( cur_stream->max_frame_size );
-                fread( frame[frame_idx].data, 1, cur_stream->max_frame_size, p_ts->opt.extra_streams[i].fp );
             }
+#endif
+            frame[frame_idx].data = malloc( cur_stream->max_frame_size );
+            if( !frame[frame_idx].data )
+            {
+                fprintf( stderr, "Malloc Failed\n" );
 
-            frame[frame_idx].size = cur_stream->max_frame_size;
-            frame[frame_idx].pid = cur_stream->pid;
-            frame[frame_idx].dts = p_ts->opt.extra_streams[i].next_audio_pts;
-            frame[frame_idx].pts = p_ts->opt.extra_streams[i].next_audio_pts;
-            p_ts->opt.extra_streams[i].next_audio_pts += p_ts->opt.extra_streams[i].increment;
-            frame_idx++;
+                for( int k = 1; k < frame_idx; k++ )
+                {
+                    if( frame[k].data )
+                        free( frame[k].data );
+                }
+
+                free( frame );
+
+                return -1;
+	    }
+            ret = fread( frame[frame_idx].data, 1, cur_stream->max_frame_size, p_ts->opt.extra_streams[i].fp );
+
+            if( ret < 0 )
+                frame_idx--;
+            else
+            {
+                frame[frame_idx].size = cur_stream->max_frame_size;
+                frame[frame_idx].pid = cur_stream->pid;
+                frame[frame_idx].dts = p_ts->opt.extra_streams[i].next_audio_pts;
+                frame[frame_idx].pts = p_ts->opt.extra_streams[i].next_audio_pts;
+                p_ts->opt.extra_streams[i].next_audio_pts += p_ts->opt.extra_streams[i].increment;
+                frame_idx++;
+            }
         }
     }
 
@@ -352,7 +384,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
 
         if( p_picture->i_type == X264_TYPE_IDR || ( p_picture->i_type == X264_TYPE_KEYFRAME && !p_ts->open_gop ) )
             frame[0].frame_type = LIBMPEGTS_CODING_TYPE_SLICE_IDR;
-	else if( p_picture->i_type == X264_TYPE_I || ( p_picture->i_type == X264_TYPE_KEYFRAME && p_ts->open_gop ) )
+        else if( p_picture->i_type == X264_TYPE_I || ( p_picture->i_type == X264_TYPE_KEYFRAME && p_ts->open_gop ) )
             frame[0].frame_type = LIBMPEGTS_CODING_TYPE_SLICE_I;
         else if( p_picture->i_type == X264_TYPE_P )
             frame[0].frame_type = LIBMPEGTS_CODING_TYPE_SLICE_P;
@@ -364,13 +396,16 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
             frame[0].pic_struct = p_picture->i_pic_struct;
     }
 
-    ts_write_frames( p_ts->w, frame, 1 + total_audio_frames, &output, &len );
+    ts_write_frames( p_ts->w, frame, 2 + frame_idx, &output, &len );
 
     if( len )
         fwrite( output, 1, len, p_ts->fp );
 
     for( int i = 0; i < total_audio_frames; i++ )
-        free( frame[1+i].data );
+    {
+        if( frame[1+i].data )
+            free( frame[1+i].data );
+    }
 
     free( frame );
 
@@ -396,6 +431,9 @@ static int close_file( hnd_t handle, int64_t largest_pts, int64_t second_largest
         return -1;
 
     fclose( p_ts->fp );
+
+    for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
+        fclose( p_ts->opt.extra_streams[1+i].fp );
 
     if( p_ts->streams )
         free( p_ts->streams );

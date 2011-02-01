@@ -730,8 +730,8 @@ static void help( x264_param_t *defaults, int longhelp )
     H1( "      --index <string>        Filename for input index file\n" );
     H0( "      --sar width:height      Specify Sample Aspect Ratio\n" );
     H0( "      --fps <float|rational>  Specify framerate\n" );
-    H0( "      --seek <integer>        First frame to encode\n" );
-    H0( "      --frames <integer>      Maximum number of frames to encode\n" );
+    H1( "      --seek <integer>        First frame to encode\n" );
+    H1( "      --frames <integer>      Maximum number of frames to encode\n" );
     H0( "      --level <string>        Specify level (as defined by Annex A)\n" );
     H1( "\n" );
     H1( "  -v, --verbose               Print stats for each frame\n" );
@@ -1033,10 +1033,10 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
         output = mp4_output;
         param->b_annexb = 0;
         param->b_repeat_headers = 0;
-        if( param->i_nal_hrd == X264_NAL_HRD_CBR || param->i_nal_hrd == X264_NAL_HRD_FAKECBR )
+        if( param->i_nal_hrd == X264_NAL_HRD_CBR || param->i_nal_hrd == X264_NAL_HRD_FAKE_CBR )
         {
             x264_cli_log( "obe-vod", X264_LOG_WARNING, "cbr nal-hrd is not compatible with mp4\n" );
-            param->i_nal_hrd = param->i_nal_hrd == X264_NAL_HRD_CBR ? X264_NAL_HRD_VBR : X264_NAL_HRD_FAKECBR;
+            param->i_nal_hrd = param->i_nal_hrd == X264_NAL_HRD_CBR ? X264_NAL_HRD_VBR : X264_NAL_HRD_FAKE_CBR;
         }
 #else
         x264_cli_log( "obe-vod", X264_LOG_ERROR, "not compiled with MP4 output support\n" );
@@ -1754,7 +1754,7 @@ static void print_status( int64_t i_start, int i_frame, int i_frame_total, int64
     {
         sprintf( buf, "obe-vod %d frames: %.2f fps, %.2f kb/s", i_frame, fps, bitrate );
     }
-    fprintf( stderr, "%s  \r", buf+5 );
+    fprintf( stderr, "%s  \r", buf+8 );
     SetConsoleTitle( buf );
     fflush( stderr ); // needed in windows
 }
