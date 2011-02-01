@@ -216,9 +216,9 @@ void x264_cli_printf( int i_level, const char *fmt, ... )
 static void print_version_info()
 {
 #ifdef X264_POINTVER
-    printf( "obe-vod "X264_POINTVER"\n" );
+    printf( "obe-vod 0.1 Beta based on x264 "X264_POINTVER"\n" );
 #else
-    printf( "obe-vod 0.%d.X\n", X264_BUILD );
+    printf( "obe-vod 0.1 Beta based on x264 0.%d.X\n", X264_BUILD );
 #endif
 #if HAVE_SWSCALE
     printf( "(libswscale %d.%d.%d)\n", LIBSWSCALE_VERSION_MAJOR, LIBSWSCALE_VERSION_MINOR, LIBSWSCALE_VERSION_MICRO );
@@ -354,7 +354,7 @@ static void help( x264_param_t *defaults, int longhelp )
 #define H0 printf
 #define H1 if(longhelp>=1) printf
 #define H2 if(longhelp==2) printf
-    H0( "OBE VoD encoder based on x264 core:%d%s\n"
+    H0( "OBE VoD 0.1 Beta encoder based on x264 core:%d%s\n"
         "Syntax: obe-vod [options] -o outfile infile\n"
         "\n"
         "Infile can be raw (in which case resolution is required),\n"
