@@ -353,7 +353,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
                 free( frame );
 
                 return -1;
-	    }
+            }
             ret = fread( frame[frame_idx].data, 1, cur_stream->max_frame_size, p_ts->opt.extra_streams[i].fp );
 
             if( ret < 0 )
@@ -393,7 +393,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
 
         frame[0].write_pulldown_info = p_ts->write_pic_struct;
         if( frame[0].write_pulldown_info )
-            frame[0].pic_struct = p_picture->i_pic_struct;
+            frame[0].pic_struct = p_picture->i_pic_struct-1;
     }
 
     ts_write_frames( p_ts->w, frame, 2 + frame_idx, &output, &len );
