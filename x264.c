@@ -1469,7 +1469,7 @@ generic_option:
         /* parse ts extra chain */
         for( char *p = ts_extra; p && *p; )
         {
-            int tok_len = strcspn( p, "/" );
+            int tok_len = strcspn( p, "|" );
             int p_len = strlen( p );
             p[tok_len] = 0;
             int name_len = strcspn( p, ":" );
@@ -1532,7 +1532,7 @@ generic_option:
         return -1;
 
     /* Get the file name */
-    FAIL_IF_ERROR( optind > argc - 1 || !output_filename, "No %s file. Run x264 --help for a list of options.\n",
+    FAIL_IF_ERROR( optind > argc - 1 || !output_filename, "No %s file. Run obe-vod --help for a list of options.\n",
                    optind > argc - 1 ? "input" : "output" )
 
     if( select_output( muxer, output_filename, param ) )
