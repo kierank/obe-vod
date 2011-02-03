@@ -1469,7 +1469,7 @@ generic_option:
         /* parse ts extra chain */
         for( char *p = ts_extra; p && *p; )
         {
-            int tok_len = strcspn( p, "/" );
+            int tok_len = strcspn( p, "|" );
             int p_len = strlen( p );
             p[tok_len] = 0;
             int name_len = strcspn( p, ":" );
