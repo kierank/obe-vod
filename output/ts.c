@@ -433,7 +433,10 @@ static int close_file( hnd_t handle, int64_t largest_pts, int64_t second_largest
     fclose( p_ts->fp );
 
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
-        fclose( p_ts->opt.extra_streams[1+i].fp );
+    {
+        if( p_ts->opt.extra_streams[i].fp )
+            fclose( p_ts->opt.extra_streams[i].fp );
+    }
 
     if( p_ts->streams )
         free( p_ts->streams );
