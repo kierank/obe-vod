@@ -380,23 +380,19 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
                 {
                     /* Read the adts fixed and variable headers */
                     frame_size = (aac_header[3] & 0x3) << 11 | (aac_header[4] << 3) | (aac_header[5] >> 5);
-                    frame[frame_idx].data = malloc( frame_size );
-                    if( !frame[frame_idx].data )
-                        goto fail;
-                    memcpy( frame[frame_idx].data, aac_header, 7 );
-                    ret = fread( frame[frame_idx].data+7, 1, frame_size-7, p_ts->opt.extra_streams[i].fp );
                 }
                 else // LATM
                 {
                     /* Read the length bytes */
                     frame_size = ((aac_header[1] & 0x1f) << 8) | aac_header[2];
                     frame_size += 3; /* +3 for the LATM header */
-                    frame[frame_idx].data = malloc( frame_size );
-                    if( !frame[frame_idx].data )
-                        goto fail;
-                    memcpy( frame[frame_idx].data, aac_header, 7 );
-                    ret = fread( frame[frame_idx].data+7, 1, frame_size-7, p_ts->opt.extra_streams[i].fp );
                 }
+
+                frame[frame_idx].data = malloc( frame_size );
+                if( !frame[frame_idx].data )
+                    goto fail;
+                memcpy( frame[frame_idx].data, aac_header, 7 );
+                ret = fread( frame[frame_idx].data+7, 1, frame_size-7, p_ts->opt.extra_streams[i].fp );
             }
             else
             {
