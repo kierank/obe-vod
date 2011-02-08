@@ -74,6 +74,12 @@ static int open_file( char *psz_filename, hnd_t *p_handle, cli_output_opt_t *opt
 static int set_param( hnd_t handle, x264_param_t *p_param )
 {
     ts_hnd_t *p_ts = handle;
+    int cur_pid = MIN_PID+1;
+    int program_num = 1; // 0 is NIT
+
+    int ts_id, num_programs, ret, aac_level, file_len;
+    ts_id = num_programs = 1;
+    ts_extra_opt_t *extra_stream;
 
     if( !p_ts->opt.i_ts_muxrate )
     {
@@ -104,11 +110,20 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
 
     // TODO Check for collisions
 
-    int cur_pid = MIN_PID+1;
-    int program_num = 1; // 0 is NIT
-
-    int ts_id, num_programs;
-    ts_id = num_programs = 1;
+    for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
+    {
+        extra_stream = &p_ts->opt.extra_streams[i];
+        file_len = strlen( extra_stream->filename );
+        if( !strcasecmp( extra_stream->filename + file_len - 3, "ac3" ) ||
+            !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "mp2" ) )
+        {
+            if( !extra_stream->bitrate )
+            {
+               fprintf( stderr, "bitrate missing in ts extra stream %i\n", i );
+               return -1;
+            }
+        }
+    }
 
     // TODO Override video PID and change if invalid per TS Spec
 
@@ -194,56 +209,67 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     #undef CPB_SHIFT
     #undef BR_SHIFT
 
-    streams[0].max_frame_size = (int)((((double)cpb_size / hrd_bit_rate)*90000)+0.5);
-
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
-        p_ts->opt.extra_streams[i].fp = fopen( p_ts->opt.extra_streams[i].filename, "rb" );
-        if( !p_ts->opt.extra_streams[i].fp )
+        extra_stream = &p_ts->opt.extra_streams[i];
+        extra_stream->fp = fopen( extra_stream->filename, "rb" );
+        if( !extra_stream->fp )
         {
-            fprintf( stderr, "[ts] Cannot Open file %s\n", p_ts->opt.extra_streams[i].filename );
+            fprintf( stderr, "[ts] Cannot Open file %s\n", extra_stream->filename );
             return -1;
         }
 
-        if( strlen( p_ts->opt.extra_streams[i].lang ) )
+        if( strlen( extra_stream->lang ) )
         {
             streams[1+i].write_lang_code = 1;
-            strcpy( streams[1+i].lang_code, p_ts->opt.extra_streams[i].lang );
+            strcpy( streams[1+i].lang_code, extra_stream->lang );
         }
 
-        streams[1+i].pid = p_ts->opt.extra_streams[i].pid ? p_ts->opt.extra_streams[i].pid : cur_pid++;
+        streams[1+i].pid = extra_stream->pid ? extra_stream->pid : cur_pid++;
 
-        // FIXME this assumes 48000Hz
+        // FIXME this assumes 48000Hz for audio except for SBR
 
-        int file_len = strlen( p_ts->opt.extra_streams[i].filename );
+        file_len = strlen( extra_stream->filename );
 
-        if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "ac3" ) )
+        if( !strcasecmp( extra_stream->filename + file_len - 3, "ac3" ) )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_AC3;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_PRIVATE_1;
-            streams[1+i].max_frame_size = (int)(((double)AC3_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
-            p_ts->opt.extra_streams[i].increment = (int)(((double)AC3_NUM_SAMPLES * 90000LL / 48000) + 0.5);
+            extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
+            extra_stream->increment = (double)AC3_NUM_SAMPLES * 90000LL / 48000;
         }
         else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "mp2" ) )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_MPEG2;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
-            streams[1+i].max_frame_size = (int)(((double)MP2_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
-            p_ts->opt.extra_streams[i].increment = (int)(((double)MP2_NUM_SAMPLES * 90000LL / 48000) + 0.5);
+            extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
+            extra_stream->increment = (double)MP2_NUM_SAMPLES * 90000LL / 48000;
         }
-#if 0
-        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) ||
-                 !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 4, "latm" ) )
+        else if( !strcasecmp( extra_stream->filename + file_len - 3, "aac" ) ||
+                 !strcasecmp( extra_stream->filename + file_len - 4, "latm" ) )
         {
-            if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "aac" ) )
+            ret = fread( extra_stream->aac_buffer, 1, 7, p_ts->opt.extra_streams[i].fp );
+            if( !ret )
+                return -1;
+            if( !strcasecmp( extra_stream->filename + file_len - 3, "aac" ) )
+            {
                 streams[1+i].stream_format = LIBMPEGTS_AUDIO_ADTS;
+                extra_stream->aac_sample_rate = ((extra_stream->aac_buffer[2] >> 2) & 0xf) == 6 ? 24000 : 48000;
+                extra_stream->aac_channel_config = ((extra_stream->aac_buffer[2] & 1) << 2) | extra_stream->aac_buffer[3] >> 6;
+            }
             else
+            {
                 streams[1+i].stream_format = LIBMPEGTS_AUDIO_LATM;
+                extra_stream->aac_sample_rate = (((extra_stream->aac_buffer[5] & 0x7) << 1) | (extra_stream->aac_buffer[6] >> 7) ) == 6 ? 24000 : 48000;
+                extra_stream->aac_channel_config = (extra_stream->aac_buffer[6] >> 3) & 0xf;
+            }
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
-            streams[1+i].max_frame_size = (int)(((double)AAC_NUM_SAMPLES * p_ts->opt.extra_streams[i].bitrate / 384000) + 0.5);
-            p_ts->opt.extra_streams[i].increment = (int)(((double)AAC_NUM_SAMPLES * 90000LL / 48000) + 0.5);
+            extra_stream->increment = (double)AAC_NUM_SAMPLES * 90000LL / extra_stream->aac_sample_rate;
         }
-#endif
+        else
+            return -1;
+        /* The audio formats supported have a fixed number of samples per frame */
+        streams[1+i].audio_frame_size = extra_stream->increment;
     }
 
     params.programs = program;
@@ -262,6 +288,24 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     if( ts_setup_mpegvideo_stream( p_ts->w, streams[0].pid, p_param->i_level_idc, i_profile_idc, hrd_bit_rate, cpb_size, 0 ) < 0 )
         return -1;
 
+    for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
+    {
+        extra_stream = &p_ts->opt.extra_streams[i];
+        if( streams[1+i].stream_format == LIBMPEGTS_AUDIO_ADTS || streams[1+i].stream_format == LIBMPEGTS_AUDIO_LATM )
+        {
+            if( extra_stream->aac_channel_config < 3 )
+                aac_level = extra_stream->aac_sample_rate == 24000 ? LIBMPEGTS_MPEG4_AAC_PROFILE_LEVEL_1 : LIBMPEGTS_MPEG4_AAC_PROFILE_LEVEL_2;
+            else
+                aac_level = extra_stream->aac_sample_rate == 24000 ? LIBMPEGTS_MPEG4_AAC_PROFILE_LEVEL_4 : LIBMPEGTS_MPEG4_AAC_PROFILE_LEVEL_5;
+
+            /* LFE channel isn't used in T-STD */
+            if( extra_stream->aac_channel_config > 5 )
+                extra_stream->aac_channel_config--;
+
+            ts_setup_mpeg4_aac_stream( p_ts->w, streams[1+i].pid, aac_level, extra_stream->aac_channel_config );
+        }
+    }
+
     free( program );
 
     return 0;
@@ -273,7 +317,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     int64_t video_pts = (int64_t)((p_picture->hrd_timing.dpb_output_time * 90000LL) + 0.5);
     uint8_t *output = NULL;
     int len = 0;
-    int ret;
+    int ret, frame_size;
     int total_audio_frames = 0;
     int frame_idx = 1;
 
@@ -314,53 +358,63 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
         for( int j = 0; j < p_ts->opt.extra_streams[i].num_audio_frames; j++ )
         {
             ts_stream_t *cur_stream = &p_ts->streams[1+i];
-#if 0
-            if( cur_stream->stream_format == LIBMPEGTS_AUDIO_ADTS )
-            {
-                /* Read the adts fixed and variable header into temporary buffer */
-                uint8_t adts_header[7];
-                ret = fread( adts_header, 1, 7, p_ts->opt.extra_streams[i].fp );
-                int length = ((length_bytes[5] & 0x1f) << 5) | (length_bytes[6] >> 2);
-                frame[frame_idx].data = malloc( length + 7 );
-                memcpy( frame[frame_idx].data, length_bytes, 7 );
-                ret = fread( frame[frame_idx].data+7, 1, length, p_ts->opt.extra_streams[i].fp );
-            }
-            else if( cur_stream->stream_format == LIBMPEGTS_AUDIO_LATM )
-            {
-                /* Read the length bytes into a temporary buffer */
-                uint8_t length_bytes[2];
-                ret = fread( length_bytes, 1, 2, p_ts->opt.extra_streams[i].fp );
-                int length = ((length_bytes[0] & 0x1f) << 5) | length_bytes[1];
-                frame[frame_idx].data = malloc( length + 2 );
-                memcpy( frame[frame_idx].data, length_bytes, 2 );
-                ret = fread( frame[frame_idx].data+2, 1, length, p_ts->opt.extra_streams[i].fp );
-            }
-            else
-            {
-            }
-#endif
-            frame[frame_idx].data = malloc( cur_stream->max_frame_size );
-            if( !frame[frame_idx].data )
-            {
-                fprintf( stderr, "Malloc Failed\n" );
+            frame_size = p_ts->opt.extra_streams[i].frame_size;
+            uint8_t aac_header_tmp[7] = {0};
+            uint8_t *aac_header;
 
-                for( int k = 1; k < frame_idx; k++ )
+            if( cur_stream->stream_format == LIBMPEGTS_AUDIO_ADTS ||
+                cur_stream->stream_format == LIBMPEGTS_AUDIO_LATM )
+            {
+                if( !p_ts->opt.extra_streams[i].aac_written_first )
                 {
-                    if( frame[k].data )
-                        free( frame[k].data );
+                    aac_header = p_ts->opt.extra_streams[i].aac_buffer;
+                    p_ts->opt.extra_streams[i].aac_written_first = 1;
+                }
+                else
+                {
+                    aac_header = aac_header_tmp;
+                    ret = fread( aac_header, 1, 7, p_ts->opt.extra_streams[i].fp );
                 }
 
-                free( frame );
-
-                return -1;
+                if( cur_stream->stream_format == LIBMPEGTS_AUDIO_ADTS )
+                {
+                    /* Read the adts fixed and variable headers */
+                    frame_size = (aac_header[3] & 0x3) << 11 | (aac_header[4] << 3) | (aac_header[5] >> 5);
+                    frame[frame_idx].data = malloc( frame_size );
+                    if( !frame[frame_idx].data )
+                        goto fail;
+                    memcpy( frame[frame_idx].data, aac_header, 7 );
+                    ret = fread( frame[frame_idx].data+7, 1, frame_size-7, p_ts->opt.extra_streams[i].fp );
+                }
+                else // LATM
+                {
+                    /* Read the length bytes */
+                    frame_size = ((aac_header[1] & 0x1f) << 8) | aac_header[2];
+                    frame_size += 3; /* +3 for the LATM header */
+                    frame[frame_idx].data = malloc( frame_size );
+                    if( !frame[frame_idx].data )
+                        goto fail;
+                    memcpy( frame[frame_idx].data, aac_header, 7 );
+                    ret = fread( frame[frame_idx].data+7, 1, frame_size-7, p_ts->opt.extra_streams[i].fp );
+                }
             }
-            ret = fread( frame[frame_idx].data, 1, cur_stream->max_frame_size, p_ts->opt.extra_streams[i].fp );
-
-            if( ret < 0 )
-                frame_idx--;
             else
             {
-                frame[frame_idx].size = cur_stream->max_frame_size;
+                frame[frame_idx].data = malloc( frame_size );
+                ret = fread( frame[frame_idx].data, 1, frame_size, p_ts->opt.extra_streams[i].fp );
+                if( !frame[frame_idx].data )
+                    goto fail;
+            }
+
+            if( ret < 0 )
+            {
+                if( frame[frame_idx].data )
+                    free( frame[frame_idx].data );
+                frame_idx--;
+            }
+            else
+            {
+                frame[frame_idx].size = frame_size;
                 frame[frame_idx].pid = cur_stream->pid;
                 frame[frame_idx].dts = p_ts->opt.extra_streams[i].next_audio_pts;
                 frame[frame_idx].pts = p_ts->opt.extra_streams[i].next_audio_pts;
@@ -410,6 +464,19 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     free( frame );
 
     return i_size;
+
+fail:
+    fprintf( stderr, "Malloc Failed\n" );
+
+    for( int k = 1; k < frame_idx; k++ )
+    {
+        if( frame[k].data )
+            free( frame[k].data );
+    }
+
+    free( frame );
+
+    return -1;
 }
 
 static int close_file( hnd_t handle, int64_t largest_pts, int64_t second_largest_pts )

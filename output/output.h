@@ -38,10 +38,17 @@ typedef struct
     int pid;
     char lang[4];
 
+    int frame_size;
+
     FILE *fp;
     int increment;
     int64_t next_audio_pts;
     int num_audio_frames;
+
+    int aac_written_first;
+    uint8_t aac_buffer[7];
+    int aac_sample_rate;
+    int aac_channel_config;
 } ts_extra_opt_t;
 
 typedef struct

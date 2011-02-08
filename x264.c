@@ -804,7 +804,7 @@ static void help( x264_param_t *defaults, int longhelp )
     H0( "Audio Options:\n" );
     H0( "\n" );
     H0( "    filename <file> -     Mandatory. File name\n" );
-    H0( "    bitrate <integer> -   Mandatory. Bitrate in bits per second\n" );
+    H0( "    bitrate <integer> -   Mandatory for AC3/MP2. Bitrate in bits per second\n" );
     H0( "    lang <3 characters> - Optional. Language Code\n" );
     H0( "    pid <integer> -       Optional. PID of audio stream\n" );
 #endif
@@ -1494,11 +1494,6 @@ generic_option:
                 if( !filename )
                 {
                    fprintf( stderr, "filename missing in ts extra stream %i\n", i );
-                   break;
-                }
-                else if( !bitrate )
-                {
-                   fprintf( stderr, "bitrate missing in ts extra stream %i\n", i );
                    break;
                 }
 
