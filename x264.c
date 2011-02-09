@@ -781,10 +781,7 @@ static void help( x264_param_t *defaults, int longhelp )
     H0( "\n" );
     H0( "The following CBR audio formats (with file extensions) are supported: \n" );
     H0( "\n" );
-#if 0
-    H0( "     .mp2, .ac3, .latm. (.latm is created by qaac)\n" );
-#endif
-    H0( "     .mp2, .ac3\n" );
+    H0( "     .mp2, .ac3, .aac, .latm. (.latm is created by qaac)\n" );
     H0( "\n" );
     H0( "      --ts-extra <audio0>|<audio1>|<audio2>\n" );
     H0( "\n" );
