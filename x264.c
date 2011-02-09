@@ -80,7 +80,6 @@ typedef struct {
     hnd_t hin;
     hnd_t hout;
     FILE *qpfile;
-    FILE *tcfile_out;
     double timebase_convert_multiplier;
     int i_pulldown;
 } cli_opt_t;
@@ -283,8 +282,6 @@ int main( int argc, char **argv )
         input.close_file( opt.hin );
     if( opt.hout )
         output.close_file( opt.hout, 0, 0 );
-    if( opt.tcfile_out )
-        fclose( opt.tcfile_out );
     if( opt.qpfile )
         fclose( opt.qpfile );
 
@@ -731,7 +728,7 @@ static void help( x264_param_t *defaults, int longhelp )
     H1( "      --index <string>        Filename for input index file\n" );
     H0( "      --sar width:height      Specify Sample Aspect Ratio\n" );
     H0( "      --fps <float|rational>  Specify framerate\n" );
-    H1( "      --seek <integer>        First frame to encode\n" );
+    //H1( "      --seek <integer>        First frame to encode\n" );
     H1( "      --frames <integer>      Maximum number of frames to encode\n" );
     H0( "      --level <string>        Specify level (as defined by Annex A)\n" );
     H1( "\n" );
@@ -755,11 +752,6 @@ static void help( x264_param_t *defaults, int longhelp )
     H2( "      --sps-id <integer>      Set SPS and PPS id numbers [%d]\n", defaults->i_sps_id );
     H2( "      --aud                   Use access unit delimiters\n" );
     H2( "      --force-cfr             Force constant framerate timestamp generation\n" );
-    H2( "      --tcfile-in <string>    Force timestamp generation with timecode file\n" );
-    H2( "      --tcfile-out <string>   Output timecode v2 file from input timestamps\n" );
-    H2( "      --timebase <int/int>    Specify timebase numerator and denominator\n"
-        "                 <integer>    Specify timebase numerator for input timecode file\n"
-        "                              or specify timebase denominator for other input\n" );
     H2( "      --dts-compress          Eliminate initial delay with container DTS hack\n" );
     H0( "\n" );
     H0( "Filtering:\n" );
@@ -813,7 +805,7 @@ static void help( x264_param_t *defaults, int longhelp )
 enum
 {
     OPT_FRAMES = 256,
-    OPT_SEEK,
+//    OPT_SEEK,
     OPT_QPFILE,
     OPT_THREAD_INPUT,
     OPT_QUIET,
@@ -830,8 +822,6 @@ enum
     OPT_DEMUXER,
     OPT_INDEX,
     OPT_INTERLACED,
-    OPT_TCFILE_IN,
-    OPT_TCFILE_OUT,
     OPT_TIMEBASE,
     OPT_PULLDOWN,
     OPT_LOG_LEVEL,
@@ -899,7 +889,7 @@ static struct option long_options[] =
     { "sar",         required_argument, NULL, 0 },
     { "fps",         required_argument, NULL, OPT_FPS },
     { "frames",      required_argument, NULL, OPT_FRAMES },
-    { "seek",        required_argument, NULL, OPT_SEEK },
+//    { "seek",        required_argument, NULL, OPT_SEEK },
     { "output",      required_argument, NULL, 'o' },
     { "muxer",       required_argument, NULL, OPT_MUXER },
     { "demuxer",     required_argument, NULL, OPT_DEMUXER },
@@ -993,8 +983,6 @@ static struct option long_options[] =
     { "colormatrix", required_argument, NULL, 0 },
     { "chromaloc",   required_argument, NULL, 0 },
     { "force-cfr",         no_argument, NULL, 0 },
-    { "tcfile-in",   required_argument, NULL, OPT_TCFILE_IN },
-    { "tcfile-out",  required_argument, NULL, OPT_TCFILE_OUT },
     { "timebase",    required_argument, NULL, OPT_TIMEBASE },
     { "pic-struct",        no_argument, NULL, 0 },
     { "crop-rect",   required_argument, NULL, 0 },
@@ -1233,7 +1221,6 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
     const char *demuxer = demuxer_names[0];
     char *output_filename = NULL;
     const char *muxer = muxer_names[0];
-    char *tcfile_name = NULL;
     x264_param_t defaults;
     char *profile = NULL;
     char *vid_filters = NULL;
@@ -1306,8 +1293,8 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
             case OPT_FRAMES:
                 param->i_frame_total = X264_MAX( atoi( optarg ), 0 );
                 break;
-            case OPT_SEEK:
-                opt->i_seek = input_opt.seek = X264_MAX( atoi( optarg ), 0 );
+//            case OPT_SEEK:
+//                opt->i_seek = input_opt.seek = X264_MAX( atoi( optarg ), 0 );
                 break;
             case 'o':
                 output_filename = optarg;
@@ -1377,13 +1364,6 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
             case OPT_INTERLACED:
                 b_user_interlaced = 1;
                 goto generic_option;
-            case OPT_TCFILE_IN:
-                tcfile_name = optarg;
-                break;
-            case OPT_TCFILE_OUT:
-                opt->tcfile_out = fopen( optarg, "wb" );
-                FAIL_IF_ERROR( !opt->tcfile_out, "can't open `%s'\n", optarg )
-                break;
             case OPT_TIMEBASE:
                 input_opt.timebase = optarg;
                 break;
@@ -1561,14 +1541,6 @@ generic_option:
                   info.height, info.interlaced ? 'i' : 'p', info.sar_width, info.sar_height,
                   info.fps_num, info.fps_den, info.vfr ? 'v' : 'c' );
 
-    if( tcfile_name )
-    {
-        FAIL_IF_ERROR( b_user_fps, "--fps + --tcfile-in is incompatible.\n" )
-        FAIL_IF_ERROR( timecode_input.open_file( tcfile_name, &opt->hin, &info, &input_opt ), "timecode input failed\n" )
-        input = timecode_input;
-    }
-    else FAIL_IF_ERROR( !info.vfr && input_opt.timebase, "--timebase is incompatible with cfr input\n" )
-
     /* init threaded input while the information about the input video is unaltered by filtering */
 #if HAVE_THREAD
     if( info.thread_safe && (b_thread_input || param->i_threads > 1
@@ -1599,7 +1571,7 @@ generic_option:
         info.timebase_num = info.fps_den;
         info.timebase_den = info.fps_num;
     }
-    if( !tcfile_name && input_opt.timebase )
+    if( input_opt.timebase )
     {
         uint64_t i_user_timebase_num;
         uint64_t i_user_timebase_den;
@@ -1841,9 +1813,6 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
         FAIL_IF_ERROR2( (i_file = output.write_headers( opt->hout, headers )) < 0, "error writing headers to output file\n" );
     }
 
-    if( opt->tcfile_out )
-        fprintf( opt->tcfile_out, "# timecode format v2\n" );
-
     /* Encode frames */
     for( ; !b_ctrl_c && (i_frame < param->i_frame_total || !param->i_frame_total); i_frame++ )
     {
@@ -1877,8 +1846,6 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
 
         second_largest_pts = largest_pts;
         largest_pts = pic.i_pts;
-        if( opt->tcfile_out )
-            fprintf( opt->tcfile_out, "%.6f\n", pic.i_pts * ((double)param->i_timebase_num / param->i_timebase_den) * 1e3 );
 
         if( opt->qpfile )
             parse_qpfile( opt, &pic, i_frame + opt->i_seek );
