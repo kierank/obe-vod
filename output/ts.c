@@ -77,9 +77,10 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     int cur_pid = MIN_PID+1;
     int program_num = 1; // 0 is NIT
 
-    int ts_id, num_programs, ret, aac_level, file_len;
+    int ts_id, num_programs, ret, aac_level;
     ts_id = num_programs = 1;
     ts_extra_opt_t *extra_stream;
+    char *ext;
 
     if( !p_ts->opt.i_ts_muxrate )
     {
@@ -113,15 +114,11 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
         extra_stream = &p_ts->opt.extra_streams[i];
-        file_len = strlen( extra_stream->filename );
-        if( !strcasecmp( extra_stream->filename + file_len - 3, "ac3" ) ||
-            !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "mp2" ) )
+        ext = get_filename_extension( extra_stream->filename );
+        if( ( !strcasecmp( ext, "ac3" ) || !strcasecmp( ext, "mp2" ) ) && !extra_stream->bitrate )
         {
-            if( !extra_stream->bitrate )
-            {
-               fprintf( stderr, "bitrate missing in ts extra stream %i\n", i );
-               return -1;
-            }
+           fprintf( stderr, "bitrate missing in ts extra stream %i\n", i );
+           return -1;
         }
     }
 
@@ -229,29 +226,29 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
 
         // FIXME this assumes 48000Hz for audio except for SBR
 
-        file_len = strlen( extra_stream->filename );
+        ext = get_filename_extension( extra_stream->filename );
 
-        if( !strcasecmp( extra_stream->filename + file_len - 3, "ac3" ) )
+        if( !strcasecmp( ext, "ac3" ) )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_AC3;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_PRIVATE_1;
             extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
             extra_stream->increment = (double)AC3_NUM_SAMPLES * 90000LL / 48000;
         }
-        else if( !strcasecmp( p_ts->opt.extra_streams[i].filename + file_len - 3, "mp2" ) )
+        else if( !strcasecmp( ext, "mp2" ) )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_MPEG2;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
             extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
             extra_stream->increment = (double)MP2_NUM_SAMPLES * 90000LL / 48000;
         }
-        else if( !strcasecmp( extra_stream->filename + file_len - 3, "aac" ) ||
-                 !strcasecmp( extra_stream->filename + file_len - 4, "latm" ) )
+        else if( !strcasecmp( ext, "aac" ) ||
+                 !strcasecmp( ext, "latm" ) )
         {
             ret = fread( extra_stream->aac_buffer, 1, 7, p_ts->opt.extra_streams[i].fp );
             if( !ret )
                 return -1;
-            if( !strcasecmp( extra_stream->filename + file_len - 3, "aac" ) )
+            if( !strcasecmp( ext, "aac" ) )
             {
                 streams[1+i].stream_format = LIBMPEGTS_AUDIO_ADTS;
                 extra_stream->aac_sample_rate = ((extra_stream->aac_buffer[2] >> 2) & 0xf) == 6 ? 24000 : 48000;
@@ -260,7 +257,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             else
             {
                 streams[1+i].stream_format = LIBMPEGTS_AUDIO_LATM;
-                extra_stream->aac_sample_rate = (((extra_stream->aac_buffer[5] & 0x7) << 1) | (extra_stream->aac_buffer[6] >> 7) ) == 6 ? 24000 : 48000;
+                extra_stream->aac_sample_rate = (((extra_stream->aac_buffer[5] & 0x7) << 1) | (extra_stream->aac_buffer[6] >> 7)) == 6 ? 24000 : 48000;
                 extra_stream->aac_channel_config = (extra_stream->aac_buffer[6] >> 3) & 0xf;
             }
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
