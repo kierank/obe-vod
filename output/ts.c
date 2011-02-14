@@ -232,7 +232,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
         {
             streams[1+i].stream_format = LIBMPEGTS_AUDIO_AC3;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_PRIVATE_1;
-            extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
+            extra_stream->frame_size = (double)AC3_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
             extra_stream->increment = (double)AC3_NUM_SAMPLES * 90000LL / 48000;
         }
         else if( !strcasecmp( ext, "mp2" ) )
@@ -242,11 +242,10 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
             extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
             extra_stream->increment = (double)MP2_NUM_SAMPLES * 90000LL / 48000;
         }
-        else if( !strcasecmp( ext, "aac" ) ||
-                 !strcasecmp( ext, "latm" ) )
+        else if( !strcasecmp( ext, "aac" ) || !strcasecmp( ext, "latm" ) )
         {
             ret = fread( extra_stream->aac_buffer, 1, 7, p_ts->opt.extra_streams[i].fp );
-            if( !ret )
+            if( ret < 0 )
                 return -1;
             if( !strcasecmp( ext, "aac" ) )
             {
