@@ -96,7 +96,6 @@ extern const cli_input_t avs_input;
 extern cli_input_t thread_input;
 extern const cli_input_t lavf_input;
 extern const cli_input_t ffms_input;
-extern cli_input_t timecode_input;
 
 extern cli_input_t input;
 
@@ -128,5 +127,10 @@ void     x264_cli_pic_clean( cli_pic_t *pic );
 uint64_t x264_cli_pic_plane_size( int csp, int width, int height, int plane );
 uint64_t x264_cli_pic_size( int csp, int width, int height );
 const x264_cli_csp_t *x264_cli_get_csp( int csp );
+
+void increase_tc( cli_opt_t *opt, cli_timecode_t *timecode );
+
+int open_scc( cli_opt_t *opt, scc_opt_t *scc );
+int write_cc( cli_opt_t *opt, x264_sei_t *sei, int odd );
 
 #endif

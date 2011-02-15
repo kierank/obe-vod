@@ -106,3 +106,23 @@ const x264_cli_csp_t *x264_cli_get_csp( int csp )
         return NULL;
     return x264_cli_csps + (csp&X264_CSP_MASK);
 }
+
+void increase_tc( cli_opt_t *opt, cli_timecode_t *timecode )
+{
+    timecode->frame = (timecode->frame + 1) % opt->timecode_ctx->mod;
+    if( !timecode->frame )
+    {
+        timecode->sec = (timecode->sec + 1) % 60;
+        if( !timecode->sec )
+        {
+            timecode->min = (timecode->min + 1) % 60;
+            if( !timecode->min )
+                timecode->hour = (timecode->hour + 1) % 24;
+        }
+    }
+
+    /* 29.97 and 59.94 Drop Frame - SMPTE 12M-2008 */
+    if( opt->drop_frame && !( timecode->min % 10 ) && timecode->sec == 0 && timecode->frame == 0 )
+        timecode->frame = 2;
+
+}

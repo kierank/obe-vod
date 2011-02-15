@@ -31,6 +31,7 @@
 
 /* In microseconds */
 #define UPDATE_INTERVAL 250000
+#define MAX_SCC 1
 
 typedef void *hnd_t;
 
@@ -71,5 +72,43 @@ if( cond )\
 }
 
 #define FAIL_IF_ERR( cond, name, ... ) RETURN_IF_ERR( cond, name, -1, __VA_ARGS__ )
+
+typedef struct {
+    int hour;
+    int min;
+    int sec;
+    int frame;
+} cli_timecode_t;
+
+typedef struct {
+    FILE *scc_file;
+    int sff;
+    cli_timecode_t timecode;
+} scc_opt_t;
+
+typedef struct{
+    int fps_num;
+    int fps_den;
+    int mod;
+    int cc_count;
+    int frame_doubling;
+} cli_timecode_ctx_t;
+
+typedef struct {
+    int b_progress;
+    int i_seek;
+    hnd_t hin;
+    hnd_t hout;
+    FILE *qpfile;
+    double timebase_convert_multiplier;
+    int i_pulldown;
+    int write_timecode;
+    int drop_frame;
+    cli_timecode_t timecode;
+    cli_timecode_ctx_t *timecode_ctx;
+    int num_scc;
+    scc_opt_t scc_opts[MAX_SCC];
+    int echostar_captions;
+} cli_opt_t;
 
 #endif

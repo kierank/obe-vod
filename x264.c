@@ -74,16 +74,6 @@ static void sigint_handler( int a )
     b_ctrl_c = 1;
 }
 
-typedef struct {
-    int b_progress;
-    int i_seek;
-    hnd_t hin;
-    hnd_t hout;
-    FILE *qpfile;
-    double timebase_convert_multiplier;
-    int i_pulldown;
-} cli_opt_t;
-
 /* file i/o operation structs */
 cli_input_t input;
 static cli_output_t output;
@@ -167,6 +157,21 @@ static const cli_pulldown_t pulldown_values[] =
 // indexed by pic_struct enum
 static const float pulldown_frame_duration[10] = { 0.0, 1, 0.5, 0.5, 1, 1, 1.5, 1.5, 2, 3 };
 
+/* Is there a spec with these in them?
+ * PAL framerates with closed captions are unlikely */
+cli_timecode_ctx_t timecode_ctx[] =
+{
+    { 24,    1,    24, 25, 0 },
+    { 24000, 1001, 24, 25, 0 },
+    { 25,    1,    25, 24, 0 },
+    { 30000, 1001, 30, 20, 0 },
+    { 30,    1,    30, 20, 0 },
+    { 50,    1,    25, 12, 1 },
+    { 60000, 1001, 30, 10, 1 },
+    { 60,    1,    30, 10, 1 },
+    { 0, 0, 0, 0 }
+};
+
 static void help( x264_param_t *defaults, int longhelp );
 static int  parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt );
 static int  encode( x264_param_t *param, cli_opt_t *opt );
@@ -216,9 +221,9 @@ void x264_cli_printf( int i_level, const char *fmt, ... )
 static void print_version_info()
 {
 #ifdef X264_POINTVER
-    printf( "obe-vod 0.1 Beta based on x264 "X264_POINTVER"\n" );
+    printf( "obe-vod 0.2 Beta based on x264 "X264_POINTVER"\n" );
 #else
-    printf( "obe-vod 0.1 Beta based on x264 0.%d.X\n", X264_BUILD );
+    printf( "obe-vod 0.2 Beta based on x264 0.%d.X\n", X264_BUILD );
 #endif
 #if HAVE_SWSCALE
     printf( "(libswscale %d.%d.%d)\n", LIBSWSCALE_VERSION_MAJOR, LIBSWSCALE_VERSION_MINOR, LIBSWSCALE_VERSION_MICRO );
@@ -352,7 +357,7 @@ static void help( x264_param_t *defaults, int longhelp )
 #define H0 printf
 #define H1 if(longhelp>=1) printf
 #define H2 if(longhelp==2) printf
-    H0( "OBE VoD 0.1 Beta encoder based on x264 core:%d%s\n"
+    H0( "OBE VoD 0.2 Beta encoder based on x264 core:%d%s\n"
         "Syntax: obe-vod [options] -o outfile infile\n"
         "\n"
         "Infile can be raw (in which case resolution is required),\n"
@@ -788,15 +793,41 @@ static void help( x264_param_t *defaults, int longhelp )
     H0( "Format of <audio>:\n" );
     H0( "\n" );
     H0( "     <audio>:<option>=<value> \n" );
-    H0( "     e.g. audio:pid=500,lang=eng,bitrate=384000\n" );
+    H0( "     e.g. audio:filename=in.ac3,pid=500,lang=eng,bitrate=384000\n" );
     H0( "\n" );
     H0( "Audio Options:\n" );
     H0( "\n" );
-    H0( "    filename <file> -     Mandatory. File name\n" );
-    H0( "    bitrate <integer> -   Mandatory for AC3/MP2. Bitrate in bits per second\n" );
-    H0( "    lang <3 characters> - Optional. Language Code\n" );
-    H0( "    pid <integer> -       Optional. PID of audio stream\n" );
+    H0( "    filename <file>            Mandatory. File name\n" );
+    H0( "    bitrate <integer>          Mandatory for AC3/MP2. Bitrate in bits per second\n" );
+    H0( "    lang <3 characters>        Optional. Language Code\n" );
+    H0( "    pid <integer>              Optional. PID of audio stream\n" );
 #endif
+    H0( "\n" );
+    H0( "SMPTE Timecodes: \n" );
+    H0( "\n" );
+    H0( "      --timecode <tc>          Start SMPTE timecode  \n" );
+    H0( "\n" );
+    H0( "e.g:\n" );
+    H0( "\n" );
+    H0( "It is important to put quotes around the timecode\n" );
+    H0( "\n" );
+    H0( "      --timecode \"01:00:00:00\" - non drop frame \n" );
+    H0( "      --timecode \"01:00:00;00\" - drop frame \n" );
+    H0( "\n" );
+    H0( "Closed Captions:\n" );
+    H0( "\n" );
+    H0( "Only single SCC files are currently supported\n" );
+    H0( "\n" );
+    H0( "      --captions <scc0>|<scc1>          SCC caption file input\n" );
+    H0( "      --captions-echostar               Write Echostar captions\n");
+    H0( "\n" );
+    H0( "Format of <scc>:\n" );
+    H0( "\n" );
+    H0( "     scc:filename=in.scc,sff=1 \n" );
+    H0( "SCC Options:\n" );
+    H0( "\n" );
+    H0( "    filename <file>       Mandatory. File name\n" );
+    H0( "    sff      0/1          Optional. Write second field first in captions\n" );
 }
 
 enum
@@ -838,6 +869,9 @@ enum
     OPT_TS_EXTRA,
     OPT_TS_DVB_AU,
 #endif
+    OPT_TIMECODE,
+    OPT_CAPTIONS,
+    OPT_CAPTIONS_ECHOSTAR,
 } OptionsOPT;
 
 static char short_options[] = "8A:B:b:f:hI:i:m:o:p:q:r:t:Vvw";
@@ -1004,6 +1038,9 @@ static struct option long_options[] =
     { "ts-pcr-pid",  required_argument, NULL, OPT_TS_PCR_PID },
     { "ts-extra",    required_argument, NULL, OPT_TS_EXTRA },
 #endif
+    { "timecode",    required_argument, NULL, OPT_TIMECODE },
+    { "captions",    required_argument, NULL, OPT_CAPTIONS },
+    { "captions-echostar", no_argument, NULL, OPT_CAPTIONS_ECHOSTAR },
     {0, 0, 0, 0}
 };
 
@@ -1048,11 +1085,11 @@ static int select_output( const char *muxer, char *filename, x264_param_t *param
         param->b_aud = 1;
         if( !param->rc.i_vbv_buffer_size || !param->i_nal_hrd  )
         {
-            fprintf( stderr, "obe-vod [error]: transport stream muxing must have VBV and NAL HRD parameters enabled \n" );
+            x264_cli_log( "obe-vod", X264_LOG_ERROR, "transport stream muxing must have VBV and NAL HRD parameters enabled\n" );
             return -1;
         }
 #else
-        fprintf( stderr, "obe-vod [error]: not compiled with TS output support\n" );
+        x264_cli_log( "obe-vod", X264_LOG_ERROR, "not compiled with TS output support\n" );
         return -1;
 #endif
     }
@@ -1222,6 +1259,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
     char *profile = NULL;
     char *vid_filters = NULL;
     char *ts_extra = NULL;
+    char *scc_extra = NULL;
     int b_thread_input = 0;
     int b_turbo = 1;
     int b_user_ref = 0;
@@ -1231,6 +1269,8 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
     cli_output_opt_t output_opt;
     char *preset = NULL;
     char *tune = NULL;
+    int j;
+    char tc_separator[2];
 
     x264_param_default( &defaults );
     cli_log_level = defaults.i_log_level;
@@ -1292,7 +1332,7 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 break;
 //            case OPT_SEEK:
 //                opt->i_seek = input_opt.seek = X264_MAX( atoi( optarg ), 0 );
-                break;
+//                break;
             case 'o':
                 output_filename = optarg;
                 break;
@@ -1411,6 +1451,17 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 ts_extra = optarg;
                 break;
 #endif
+            case OPT_TIMECODE:
+                /* don't fail if the user is a bit lazy and doesn't include leading zeros */
+                sscanf( optarg, "%u:%u:%u%[;:]%u", &opt->timecode.hour, &opt->timecode.min, &opt->timecode.sec, tc_separator, &opt->timecode.frame );
+                opt->drop_frame = !!strcmp( tc_separator, ";" );
+                break;
+            case OPT_CAPTIONS:
+                scc_extra = optarg;
+                break;
+            case OPT_CAPTIONS_ECHOSTAR:
+                opt->echostar_captions = 1;
+                break;
             default:
 generic_option:
             {
@@ -1443,7 +1494,7 @@ generic_option:
 #ifdef HAVE_LIBMPEGTS
     if( ts_extra )
     {
-        int i = 0;
+        j = 0;
         /* parse ts extra chain */
         for( char *p = ts_extra; p && *p; )
         {
@@ -1461,39 +1512,38 @@ generic_option:
                 if( !opts && params )
                     break;
 
-	        char *filename = x264_get_option( optlist[0], opts );
-	        char *str_bitrate = x264_get_option( optlist[1], opts );
-	        char *lang = x264_get_option( optlist[2], opts );
-	        char *str_pid = x264_get_option( optlist[3], opts );
-                int bitrate   = x264_otoi( str_bitrate, 0 );
-                int pid       = x264_otoi( str_pid, 0 );
+                char *filename = x264_get_option( optlist[0], opts );
+                char *str_bitrate = x264_get_option( optlist[1], opts );
+                char *lang = x264_get_option( optlist[2], opts );
+                char *str_pid = x264_get_option( optlist[3], opts );
 
-                if( !filename )
+                FAIL_IF_ERROR( !filename, "Filename missing in ts extra file %i\n", j+1 );
+
+                output_opt.extra_streams[j].filename = malloc( strlen( filename ) + 1 );
+                if( !output_opt.extra_streams[j].filename )
                 {
-                   fprintf( stderr, "filename missing in ts extra stream %i\n", i );
-                   break;
+                   fprintf( stderr, "malloc failed\n" );
+                   return -1;
                 }
-
-                output_opt.extra_streams[i].filename = malloc( strlen( filename ) + 1 );
-                strcpy( output_opt.extra_streams[i].filename, filename );
+                strcpy( output_opt.extra_streams[j].filename, filename );
 
                 /* use only the first three characters */
                 if( lang && strlen( lang ) >= 3 )
                 {
-                    memcpy( output_opt.extra_streams[i].lang, lang, 3 );
-                    output_opt.extra_streams[i].lang[3] = 0;
+                    memcpy( output_opt.extra_streams[j].lang, lang, 3 );
+                    output_opt.extra_streams[j].lang[3] = 0;
                 }
-                output_opt.extra_streams[i].bitrate = bitrate;
-                output_opt.extra_streams[i].pid = pid;
+                output_opt.extra_streams[j].bitrate = x264_otoi( str_bitrate, 0 );
+                output_opt.extra_streams[j].pid = x264_otoi( str_pid, 0 );
 
-                i++;
+                j++;
             }
-	    else
-                fprintf( stderr, "%s is not a valid ts extra type\n", p );
+            else
+                x264_cli_log( "obe-vod", X264_LOG_WARNING, "%s is not a valid ts extra type\n", p );
 
             p += X264_MIN( tok_len+1, p_len );
         }
-        output_opt.num_extra_streams = i;
+        output_opt.num_extra_streams = j;
     }
 #endif
     /* If first pass mode is used, apply faster settings. */
@@ -1563,6 +1613,66 @@ generic_option:
         info.fps_num = param->i_fps_num;
         info.fps_den = param->i_fps_den;
     }
+
+    for( j = 0; timecode_ctx[j].fps_num != 0; j++ )
+    {
+        if( timecode_ctx[j].fps_num == info.fps_num && timecode_ctx[j].fps_den == info.fps_den )
+        {
+            opt->timecode_ctx = &timecode_ctx[j];
+            opt->write_timecode = 1;
+            break;
+        }
+    }
+
+    if( scc_extra )
+    {
+        FAIL_IF_ERROR( !opt->write_timecode, "unsupported framerate for scc file\n" );
+        FAIL_IF_ERROR( opt->i_pulldown, "pulldown is currently not compatible with scc input\n" );
+
+        j = 0;
+        for( char *p = scc_extra; p && *p; )
+        {
+            int tok_len = strcspn( p, "|" );
+            int p_len = strlen( p );
+            p[tok_len] = 0;
+            int name_len = strcspn( p, ":" );
+            p[name_len] = 0;
+            name_len += name_len != tok_len;
+            if( j == MAX_SCC )
+            {
+                x264_cli_log( "obe-vod", X264_LOG_WARNING, "only single scc file allowed\n" );
+                break;
+            }
+
+            if( !strcasecmp( p, "scc" ) )
+            {
+                char *params = p + name_len;
+                static const char *optlist[] = { "filename", "sff", NULL };
+                char **opts = x264_split_options( params, optlist );
+                if( !opts && params )
+                    break;
+
+                char *filename = x264_get_option( optlist[0], opts );
+                char *sff = x264_get_option( optlist[1], opts );
+
+                FAIL_IF_ERROR( !filename, "Filename missing in caption file %i\n", j+1 );
+
+                opt->scc_opts[j].scc_file = fopen( filename, "rb" );
+                FAIL_IF_ERROR( !opt->scc_opts[j].scc_file, "Could not open caption file %s\n", filename );
+                opt->scc_opts[j].sff = x264_otoi( sff, 0 );
+
+                FAIL_IF_ERROR( open_scc( opt, &opt->scc_opts[j] ) < 0, "Could not read caption file %s\n", filename );
+
+                opt->num_scc++;
+                j++;
+            }
+            else
+                x264_cli_log( "obe-vod", X264_LOG_WARNING, "%s is not a valid caption type\n", p );
+
+            p += X264_MIN( tok_len+1, p_len );
+        }
+    }
+
     if( !info.vfr )
     {
         info.timebase_num = info.fps_den;
@@ -1846,6 +1956,8 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
 
         if( opt->qpfile )
             parse_qpfile( opt, &pic, i_frame + opt->i_seek );
+        if( opt->num_scc )
+            write_cc( opt, &pic.extra_sei, i_frame & 1 );
 
         prev_dts = last_dts;
         i_frame_size = encode_frame( h, opt->hout, &pic, &last_dts );
@@ -1868,6 +1980,9 @@ static int encode( x264_param_t *param, cli_opt_t *opt )
         /* update status line (up to 1000 times per input file) */
         if( opt->b_progress && i_frame_output )
             i_previous = print_status( i_start, i_previous, i_frame_output, param->i_frame_total, i_file, param, 2 * last_dts - prev_dts - first_dts );
+
+        if( opt->write_timecode && ( ( opt->timecode_ctx->frame_doubling && (i_frame & 1) ) || !opt->timecode_ctx->frame_doubling ) )
+            increase_tc( opt, &opt->timecode );
     }
     /* Flush delayed frames */
     while( !b_ctrl_c && x264_encoder_delayed_frames( h ) )
@@ -1923,6 +2038,9 @@ fail:
         fprintf( stderr, "encoded %d frames, %.2f fps, %.2f kb/s\n", i_frame_output, fps,
                  (double) i_file * 8 / ( 1000 * duration ) );
     }
+
+    for( int i = 0; i < opt->num_scc; i++ )
+        fclose( opt->scc_opts[i].scc_file );
 
     SetConsoleTitle( originalCTitle );
 
