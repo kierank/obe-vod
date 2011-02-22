@@ -275,8 +275,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     params.cbr = p_ts->opt.b_ts_cbr;
     params.ts_type = p_ts->opt.i_ts_type;
 
-    program[0].cablelabs_is_3d = params.ts_type == TS_TYPE_CABLELABS &&
-                                 ( p_param->i_frame_packing == 3 || p_param->i_frame_packing == 4 );
+    program[0].is_3dtv = p_param->i_frame_packing == 3 || p_param->i_frame_packing == 4;
 
     if( ts_setup_transport_stream( p_ts->w, &params ) < 0 )
         return -1;
