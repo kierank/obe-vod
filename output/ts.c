@@ -399,16 +399,16 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
                     goto fail;
 
                 ret = fread( ac3_header, 1, 2, p_ts->opt.extra_streams[i].fp );
-                if( ac3_header[0] == 0x01 && ac3_header[1] == 0x10 )
+                if( ac3_header[0] != 0xb || ac3_header[1] != 0x77 )
                 {
                     fseek( p_ts->opt.extra_streams[i].fp, 14, SEEK_CUR );
-                    ret = fread( frame[frame_idx].data, 1, frame_size, p_ts->opt.extra_streams[i].fp );
+                    ret = fread( ac3_header, 1, 2, p_ts->opt.extra_streams[i].fp );
+                    if( ac3_header[0] != 0xb || ac3_header[1] != 0x77 )
+                        ret = -1;
                 }
-                else
-                {
-                    memcpy( frame[frame_idx].data, ac3_header, 2 );
-                    ret = fread( frame[frame_idx].data+2, 1, frame_size-2, p_ts->opt.extra_streams[i].fp );
-                }
+
+                memcpy( frame[frame_idx].data, ac3_header, 2 );
+                ret = fread( frame[frame_idx].data+2, 1, frame_size-2, p_ts->opt.extra_streams[i].fp );
             }
             else
             {
