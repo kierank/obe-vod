@@ -968,6 +968,8 @@ x264_t *x264_encoder_open( x264_param_t *param )
     h->sps = &h->sps_array[0];
     x264_sps_init( h->sps, h->param.i_sps_id, &h->param );
 
+    h->param.i_profile = h->sps->i_profile_idc;
+
     h->pps = &h->pps_array[0];
     x264_pps_init( h->pps, h->param.i_sps_id, &h->param, h->sps );
 
