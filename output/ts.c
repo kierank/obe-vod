@@ -389,6 +389,27 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
                 memcpy( frame[frame_idx].data, aac_header, 7 );
                 ret = fread( frame[frame_idx].data+7, 1, frame_size-7, p_ts->opt.extra_streams[i].fp );
             }
+            else if( cur_stream->stream_format == LIBMPEGTS_AUDIO_AC3 )
+            {
+                /* Some AC-3 encoders have a 16-byte header */
+                uint8_t ac3_header[2] = {0};
+
+                frame[frame_idx].data = malloc( frame_size );
+                if( !frame[frame_idx].data )
+                    goto fail;
+
+                ret = fread( ac3_header, 1, 2, p_ts->opt.extra_streams[i].fp );
+                if( ac3_header[0] == 0x01 && ac3_header[1] == 0x10 )
+                {
+                    fseek( p_ts->opt.extra_streams[i].fp, 14, SEEK_CUR );
+                    ret = fread( frame[frame_idx].data, 1, frame_size, p_ts->opt.extra_streams[i].fp );
+                }
+                else
+                {
+                    memcpy( frame[frame_idx].data, ac3_header, 2 );
+                    ret = fread( frame[frame_idx].data+2, 1, frame_size-2, p_ts->opt.extra_streams[i].fp );
+                }
+            }
             else
             {
                 frame[frame_idx].data = malloc( frame_size );
