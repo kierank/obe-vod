@@ -315,6 +315,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     int ret, frame_size;
     int total_audio_frames = 0;
     int frame_idx = 1;
+    int64_t *pcr_list;
 
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
@@ -462,7 +463,7 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
             frame[0].pic_struct = p_picture->i_pic_struct-1;
     }
 
-    ts_write_frames( p_ts->w, frame, frame_idx, &output, &len );
+    ts_write_frames( p_ts->w, frame, frame_idx, &output, &len, &pcr_list );
 
     if( len )
         fwrite( output, 1, len, p_ts->fp );
@@ -498,9 +499,10 @@ static int close_file( hnd_t handle, int64_t largest_pts, int64_t second_largest
     if( p_ts->first )
     {
         uint8_t *output = NULL;
+        int64_t *pcr_list;
         int len = 0;
 
-        ts_write_frames( p_ts->w, NULL, 0, &output, &len );
+        ts_write_frames( p_ts->w, NULL, 0, &output, &len, &pcr_list );
 
         if( len )
             fwrite( output, 1, len, p_ts->fp );
