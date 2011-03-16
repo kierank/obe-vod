@@ -399,7 +399,7 @@ static void help( x264_param_t *defaults, int longhelp )
 #else
         "no",
 #endif
-#if HAVE_GPAC
+#if HAVE_LIBMPEGTS
         "yes",
 #else
         "no",
