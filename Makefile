@@ -130,7 +130,7 @@ SRCCLI += extras/getopt.c
 endif
 
 ifneq ($(SONAME),)
-ifeq ($(SYS),MINGW)
+ifeq ($(SYS),WINDOWS)
 SRCSO += x264dll.c
 endif
 endif
@@ -144,30 +144,35 @@ DEP  = depend
 
 default: $(DEP) obe-vod$(EXE)
 
-libx264.a: .depend $(OBJS) $(OBJASM)
-	$(AR) rc libx264.a $(OBJS) $(OBJASM)
-	$(RANLIB) libx264.a
+$(LIBX264): .depend $(OBJS) $(OBJASM)
+	$(AR)$@ $(OBJS) $(OBJASM)
+	$(if $(RANLIB), $(RANLIB) $@)
 
 $(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
-	$(CC) -shared -o $@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
+	$(LD)$@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
+<<<<<<< HEAD
 obe-vod$(EXE): $(OBJCLI) libx264.a
 	$(CC) -o $@ $+ $(LDFLAGSCLI) $(LDFLAGS)
+=======
+x264$(EXE): $(OBJCLI) $(LIBX264)
+	$(LD)$@ $+ $(LDFLAGSCLI) $(LDFLAGS)
+>>>>>>> 08d04a4d30b452faed3b763528611737d994b30b
 
-checkasm: tools/checkasm.o libx264.a
-	$(CC) -o $@ $+ $(LDFLAGS)
+checkasm: tools/checkasm.o $(LIBX264)
+	$(LD)$@ $+ $(LDFLAGS)
 
 %.o: %.asm
 	$(AS) $(ASFLAGS) -o $@ $<
-	-@ $(STRIP) -x $@ # delete local/anonymous symbols, so they don't show up in oprofile
+	-@ $(if $(STRIP), $(STRIP) -x $@) # delete local/anonymous symbols, so they don't show up in oprofile
 
 %.o: %.S
 	$(AS) $(ASFLAGS) -o $@ $<
-	-@ $(STRIP) -x $@ # delete local/anonymous symbols, so they don't show up in oprofile
+	-@ $(if $(STRIP), $(STRIP) -x $@) # delete local/anonymous symbols, so they don't show up in oprofile
 
 .depend: config.mak
 	@rm -f .depend
-	@$(foreach SRC, $(SRCS) $(SRCCLI) $(SRCSO), $(CC) $(CFLAGS) $(SRC) -MT $(SRC:%.c=%.o) -MM -g0 1>> .depend;)
+	@$(foreach SRC, $(SRCS) $(SRCCLI) $(SRCSO), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:%.c=%.o) $(DEPMM) 1>> .depend;)
 
 config.mak:
 	./configure
@@ -196,25 +201,20 @@ fprofiled:
 else
 fprofiled:
 	$(MAKE) clean
-	mv config.mak config.mak2
-	sed -e 's/CFLAGS.*/& -fprofile-generate/; s/LDFLAGS.*/& -fprofile-generate/' config.mak2 > config.mak
-	$(MAKE) obe-vod$(EXE)
+	$(MAKE) obe-vod$(EXE) CFLAGS="$(CFLAGS) $(PROF_GEN_CC)" LDFLAGS="$(LDFLAGS) $(PROF_GEN_LD)"
 	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7, ./obe-vod$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
 	rm -f $(SRC2:%.c=%.o)
-	sed -e 's/CFLAGS.*/& -fprofile-use/; s/LDFLAGS.*/& -fprofile-use/' config.mak2 > config.mak
-	$(MAKE)
-	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno)
-	mv config.mak2 config.mak
+	$(MAKE) CFLAGS="$(CFLAGS) $(PROF_USE_CC)" LDFLAGS="$(LDFLAGS) $(PROF_USE_LD)"
+	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno) *.dyn pgopti.dpi pgopti.dpi.lock
 endif
 
 clean:
-	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a obe-vod obe-vod.exe .depend TAGS
+	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a *.lib *.exp *.pdb obe-vod obe-vod.exe .depend TAGS
 	rm -f checkasm checkasm.exe tools/checkasm.o tools/checkasm-a.o
-	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno)
-	- sed -e 's/ *-fprofile-\(generate\|use\)//g' config.mak > config.mak2 && mv config.mak2 config.mak
+	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno) *.dyn pgopti.dpi pgopti.dpi.lock
 
 distclean: clean
-	rm -f config.mak x264_config.h config.h config.log
+	rm -f config.mak x264_config.h config.h config.log obe-vod.pc obe-vod.def
 	rm -rf test/
 
 install: obe-vod$(EXE) $(SONAME)
