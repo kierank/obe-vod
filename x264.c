@@ -72,17 +72,6 @@ static void sigint_handler( int a )
 
 static char UNUSED originalCTitle[200] = "";
 
-typedef struct {
-    int b_progress;
-    int i_seek;
-    hnd_t hin;
-    hnd_t hout;
-    FILE *qpfile;
-    FILE *tcfile_out;
-    double timebase_convert_multiplier;
-    int i_pulldown;
-} cli_opt_t;
-
 /* file i/o operation structs */
 cli_input_t input;
 static cli_output_t output;
