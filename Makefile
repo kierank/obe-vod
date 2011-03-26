@@ -151,13 +151,8 @@ $(LIBX264): .depend $(OBJS) $(OBJASM)
 $(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(LD)$@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
-<<<<<<< HEAD
-obe-vod$(EXE): $(OBJCLI) libx264.a
-	$(CC) -o $@ $+ $(LDFLAGSCLI) $(LDFLAGS)
-=======
-x264$(EXE): $(OBJCLI) $(LIBX264)
+obe-vod$(EXE): $(OBJCLI) $(LIBX264)
 	$(LD)$@ $+ $(LDFLAGSCLI) $(LDFLAGS)
->>>>>>> 08d04a4d30b452faed3b763528611737d994b30b
 
 checkasm: tools/checkasm.o $(LIBX264)
 	$(LD)$@ $+ $(LDFLAGS)
