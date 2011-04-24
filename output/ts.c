@@ -165,7 +165,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     }
 
     p_ts->write_pic_struct = p_param->b_pic_struct;
-    p_ts->open_gop = !!p_param->i_open_gop;
+    p_ts->open_gop = p_param->b_open_gop;
     p_ts->streams = streams;
 
     program->streams = streams;
