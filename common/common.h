@@ -205,7 +205,8 @@ void x264_log( x264_t *h, int i_level, const char *psz_fmt, ... );
 
 void x264_reduce_fraction( uint32_t *n, uint32_t *d );
 void x264_reduce_fraction64( uint64_t *n, uint64_t *d );
-void x264_init_vlc_tables( void );
+void x264_cavlc_init( void );
+void x264_cabac_init( void );
 
 static ALWAYS_INLINE pixel x264_clip_pixel( int x )
 {
@@ -859,7 +860,7 @@ struct x264_t
 // included at the end because it needs x264_t
 #include "macroblock.h"
 
-#if HAVE_MMX
+#if ARCH_X86 || ARCH_X86_64
 #include "x86/util.h"
 #endif
 
