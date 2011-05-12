@@ -21,7 +21,10 @@ struct x264_speedcontrol_t
     float dither;
     x264_param_t user_param;
 
-    struct {
+    int first;
+
+    struct
+    {
         int64_t min_buffer, max_buffer;
         double avg_preset;
         int den;
@@ -52,6 +55,7 @@ void x264_speedcontrol_new( x264_t *h )
     sc->stat.min_buffer = sc->buffer_size;
     sc->stat.max_buffer = 0;
     sc->user_param = h->param;
+    sc->first = 1;
 }
 
 void x264_speedcontrol_delete( x264_t *h )
@@ -157,7 +161,14 @@ void x264_speedcontrol_frame( x264_t *h )
     x264_emms();
 
     // update buffer state after encoding and outputting the previous frame(s)
-    t = x264_mdate();
+    if( sc->first )
+    {
+        t = sc->timestamp = x264_mdate();
+        sc->first = 0;
+    }
+    else
+        t = x264_mdate();
+
     delta_f = h->i_frame - sc->prev_frame;
     delta_t = t - sc->timestamp;
     delta_buffer = delta_f * sc->spf / h->param.sc.f_speed - delta_t;
@@ -210,7 +221,7 @@ void x264_speedcontrol_frame( x264_t *h )
                      / (sc->buffer_size*3/4 + sc->compensation_period);
         float cplx = sc->cplx_num / sc->cplx_den;
         float set, t0, t1;
-	float filled = (float) sc->buffer_fill / sc->buffer_size;
+        float filled = (float) sc->buffer_fill / sc->buffer_size;
         int i;
         t0 = presets[0].time * cplx;
         for( i=1;; i++ )
@@ -237,9 +248,9 @@ void x264_speedcontrol_frame( x264_t *h )
             wall = wall*decay + delta_t;
             tgt = tgt*decay + target;
             den = den*decay + 1;
-            fprintf( stderr, "speed: %.2f %d[%.5f] (t/c/w: %6.0f/%6.0f/%6.0f = %.4f) fps=%.2f\r",
-                     set, sc->preset, (float)sc->buffer_fill / sc->buffer_size,
-                     tgt/den, cpu/den, wall/den, cpu/wall, 1e6*den/wall );
+            x264_log( h, X264_LOG_DEBUG, "speed: %.2f %d[%.5f] (t/c/w: %6.0f/%6.0f/%6.0f = %.4f) fps=%.2f\r",
+                      set, sc->preset, (float)sc->buffer_fill / sc->buffer_size,
+                      tgt/den, cpu/den, wall/den, cpu/wall, 1e6*den/wall );
         }
     }
 

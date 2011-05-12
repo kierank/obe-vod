@@ -240,6 +240,7 @@ typedef struct x264_param_t
     int         i_csp;  /* CSP of encoded bitstream, only i420 supported */
     int         i_level_idc;
     int         i_frame_total; /* number of frames to encode if known, else 0 */
+    int         i_profile; /* Output Only */
 
     /* NAL HRD
      * Uses Buffering and Picture Timing SEIs to signal HRD
@@ -361,6 +362,9 @@ typedef struct x264_param_t
         float       f_vbv_buffer_init; /* <=1: fraction of buffer_size. >1: kbit */
         float       f_ip_factor;
         float       f_pb_factor;
+
+        int         i_vbv_max_bitrate_actual; /* Output only when HRD enabled */
+        int         i_vbv_buffer_size_actual; /* Output only when HRD enabled */
 
         int         i_aq_mode;      /* psy adaptive QP. (X264_AQ_*) */
         float       f_aq_strength;
@@ -717,6 +721,9 @@ typedef struct
     /* private user data. libx264 doesn't touch this,
        not even copy it from input to output frames. */
     void *opaque;
+    /* private user data, libx264 doesn't touch this,
+       copied from input to output frames. */
+    void *passthrough_opaque;
 } x264_picture_t;
 
 /* x264_picture_init:

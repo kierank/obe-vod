@@ -867,7 +867,7 @@ static int x264_validate_parameters( x264_t *h, int b_open )
     if( PARAM_INTERLACED )
         h->param.b_pic_struct = 1;
 
-    h->param.i_nal_hrd = x264_clip3( h->param.i_nal_hrd, X264_NAL_HRD_NONE, X264_NAL_HRD_CBR );
+    h->param.i_nal_hrd = x264_clip3( h->param.i_nal_hrd, X264_NAL_HRD_NONE, X264_NAL_HRD_FAKE_CBR );
 
     if( h->param.i_nal_hrd && !h->param.rc.i_vbv_buffer_size )
     {
@@ -879,7 +879,7 @@ static int x264_validate_parameters( x264_t *h, int b_open )
          (h->param.rc.i_bitrate != h->param.rc.i_vbv_max_bitrate || !h->param.rc.i_vbv_max_bitrate) )
     {
         x264_log( h, X264_LOG_WARNING, "CBR HRD requires constant bitrate\n" );
-        h->param.i_nal_hrd = X264_NAL_HRD_VBR;
+        h->param.i_nal_hrd = h->param.i_nal_hrd == X264_NAL_HRD_CBR ? X264_NAL_HRD_VBR : X264_NAL_HRD_FAKE_CBR;
     }
 
     /* ensure the booleans are 0 or 1 so they can be used in math */
@@ -1022,6 +1022,8 @@ x264_t *x264_encoder_open( x264_param_t *param )
 
     h->sps = &h->sps_array[0];
     x264_sps_init( h->sps, h->param.i_sps_id, &h->param );
+
+    h->param.i_profile = h->sps->i_profile_idc;
 
     h->pps = &h->pps_array[0];
     x264_pps_init( h->pps, h->param.i_sps_id, &h->param, h->sps );
@@ -3003,7 +3005,7 @@ static int x264_encoder_frame_end( x264_t *h, x264_t *thread_current,
 
     /* Set output picture properties */
     pic_out->i_type = h->fenc->i_type;
-
+    pic_out->passthrough_opaque = h->fenc->passthrough_opaque;
     pic_out->b_keyframe = h->fenc->b_keyframe;
     pic_out->i_pic_struct = h->fenc->i_pic_struct;
 
