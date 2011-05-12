@@ -1731,11 +1731,15 @@ generic_option:
 
     if( !b_user_interlaced && info.interlaced )
     {
-        x264_cli_log( "obe-vod", X264_LOG_WARNING, "input appears to be interlaced, enabling %cff interlaced mode.\n"
+#if HAVE_INTERLACED
+        x264_cli_log( "x264", X264_LOG_WARNING, "input appears to be interlaced, enabling %cff interlaced mode.\n"
                       "                If you want otherwise, use --no-interlaced or --%cff\n",
                       info.tff ? 't' : 'b', info.tff ? 'b' : 't' );
         param->b_interlaced = 1;
         param->b_tff = !!info.tff;
+#else
+        x264_cli_log( "x264", X264_LOG_WARNING, "input appears to be interlaced, but not compiled with interlaced support\n" );
+#endif
     }
 
     /* Automatically reduce reference frame count to match the user's target level

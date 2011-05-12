@@ -140,9 +140,13 @@ OBJCLI = $(SRCCLI:%.c=%.o)
 OBJSO = $(SRCSO:%.c=%.o)
 DEP  = depend
 
-.PHONY: all default fprofiled clean distclean install uninstall dox test testclean
+.PHONY: all default fprofiled clean distclean install uninstall dox test testclean lib-static lib-shared cli install-lib-dev install-lib-static install-lib-shared install-cli
 
-default: $(DEP) obe-vod$(EXE)
+default: $(DEP)
+
+cli: obe-vod$(EXE)
+lib-static: $(LIBX264)
+lib-shared: $(SONAME)
 
 $(LIBX264): .depend $(OBJS) $(OBJASM)
 	$(AR)$@ $(OBJS) $(OBJASM)
@@ -151,8 +155,8 @@ $(LIBX264): .depend $(OBJS) $(OBJASM)
 $(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(LD)$@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
-obe-vod$(EXE): $(OBJCLI) $(LIBX264)
-	$(LD)$@ $+ $(LDFLAGSCLI) $(LDFLAGS)
+obe-vod$(EXE): .depend $(OBJCLI) $(CLI_LIBX264)
+	$(LD)$@ $(OBJCLI) $(CLI_LIBX264) $(LDFLAGSCLI) $(LDFLAGS)
 
 checkasm: tools/checkasm.o $(LIBX264)
 	$(LD)$@ $+ $(LDFLAGS)
