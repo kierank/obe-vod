@@ -73,7 +73,7 @@ if( cond )\
 
 #define FAIL_IF_ERR( cond, name, ... ) RETURN_IF_ERR( cond, name, -1, __VA_ARGS__ )
 
-typedef struct {
+typedef struct __attribute__ ((__packed__)) {
     int hour;
     int min;
     int sec;

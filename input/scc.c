@@ -57,8 +57,8 @@ static void write_null( bs_t *s )
 
 static void write_payload( bs_t *s, cli_opt_t *opt )
 {
-    char cc_data1[2];
-    char cc_data2[2];
+    char cc_data1[3];
+    char cc_data2[3];
     char spacer[1];
     char tc_separator[1];
     int ret;
