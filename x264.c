@@ -220,9 +220,9 @@ void x264_cli_printf( int i_level, const char *fmt, ... )
 static void print_version_info()
 {
 #ifdef X264_POINTVER
-    printf( "obe-vod 0.21 Beta based on x264 "X264_POINTVER"\n" );
+    printf( "obe-vod 0.21 based on x264 "X264_POINTVER"\n" );
 #else
-    printf( "obe-vod 0.21 Beta based on x264 0.%d.X\n", X264_BUILD );
+    printf( "obe-vod 0.21 based on x264 0.%d.X\n", X264_BUILD );
 #endif
 #if HAVE_SWSCALE
     printf( "(libswscale %d.%d.%d)\n", LIBSWSCALE_VERSION_MAJOR, LIBSWSCALE_VERSION_MINOR, LIBSWSCALE_VERSION_MICRO );
