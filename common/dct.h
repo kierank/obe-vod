@@ -1,7 +1,7 @@
 /*****************************************************************************
  * dct.h: transform and zigzag
  *****************************************************************************
- * Copyright (C) 2004-2011 x264 project
+ * Copyright (C) 2004-2012 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *
@@ -26,70 +26,10 @@
 #ifndef X264_DCT_H
 #define X264_DCT_H
 
-/* the inverse of the scaling factors introduced by 8x8 fdct */
-#define W(i) (i==0 ? FIX8(1.0000) :\
-              i==1 ? FIX8(0.8859) :\
-              i==2 ? FIX8(1.6000) :\
-              i==3 ? FIX8(0.9415) :\
-              i==4 ? FIX8(1.2651) :\
-              i==5 ? FIX8(1.1910) :0)
-static const uint16_t x264_dct8_weight_tab[64] = {
-    W(0), W(3), W(4), W(3),  W(0), W(3), W(4), W(3),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1),
-    W(4), W(5), W(2), W(5),  W(4), W(5), W(2), W(5),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1),
-
-    W(0), W(3), W(4), W(3),  W(0), W(3), W(4), W(3),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1),
-    W(4), W(5), W(2), W(5),  W(4), W(5), W(2), W(5),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1)
-};
-#undef W
-
-#define W(i) (i==0 ? FIX8(1.76777) :\
-              i==1 ? FIX8(1.11803) :\
-              i==2 ? FIX8(0.70711) :0)
-static const uint16_t x264_dct4_weight_tab[16] = {
-    W(0), W(1), W(0), W(1),
-    W(1), W(2), W(1), W(2),
-    W(0), W(1), W(0), W(1),
-    W(1), W(2), W(1), W(2)
-};
-#undef W
-
-/* inverse squared */
-#define W(i) (i==0 ? FIX8(3.125) :\
-              i==1 ? FIX8(1.25) :\
-              i==2 ? FIX8(0.5) :0)
-static const uint16_t x264_dct4_weight2_tab[16] = {
-    W(0), W(1), W(0), W(1),
-    W(1), W(2), W(1), W(2),
-    W(0), W(1), W(0), W(1),
-    W(1), W(2), W(1), W(2)
-};
-#undef W
-
-#define W(i) (i==0 ? FIX8(1.00000) :\
-              i==1 ? FIX8(0.78487) :\
-              i==2 ? FIX8(2.56132) :\
-              i==3 ? FIX8(0.88637) :\
-              i==4 ? FIX8(1.60040) :\
-              i==5 ? FIX8(1.41850) :0)
-static const uint16_t x264_dct8_weight2_tab[64] = {
-    W(0), W(3), W(4), W(3),  W(0), W(3), W(4), W(3),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1),
-    W(4), W(5), W(2), W(5),  W(4), W(5), W(2), W(5),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1),
-
-    W(0), W(3), W(4), W(3),  W(0), W(3), W(4), W(3),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1),
-    W(4), W(5), W(2), W(5),  W(4), W(5), W(2), W(5),
-    W(3), W(1), W(5), W(1),  W(3), W(1), W(5), W(1)
-};
-#undef W
-
-extern uint16_t x264_dct4_weight2_zigzag[2][16]; // [2] = {frame, field}
-extern uint16_t x264_dct8_weight2_zigzag[2][64];
+extern const uint32_t x264_dct4_weight_tab[16];
+extern const uint32_t x264_dct8_weight_tab[64];
+extern const uint32_t x264_dct4_weight2_tab[16];
+extern const uint32_t x264_dct8_weight2_tab[64];
 
 typedef struct
 {
@@ -104,6 +44,8 @@ typedef struct
     void (*add8x8_idct)  ( pixel *p_dst, dctcoef dct[4][16] );
     void (*add8x8_idct_dc) ( pixel *p_dst, dctcoef dct[4] );
 
+    void (*sub8x16_dct_dc)( dctcoef dct[8], pixel *pix1, pixel *pix2 );
+
     void (*sub16x16_dct) ( dctcoef dct[16][16], pixel *pix1, pixel *pix2 );
     void (*add16x16_idct)( pixel *p_dst, dctcoef dct[16][16] );
     void (*add16x16_idct_dc) ( pixel *p_dst, dctcoef dct[16] );
@@ -116,6 +58,8 @@ typedef struct
 
     void (*dct4x4dc) ( dctcoef d[16] );
     void (*idct4x4dc)( dctcoef d[16] );
+
+    void (*dct2x4dc)( dctcoef dct[8], dctcoef dct4x4[8][16] );
 
 } x264_dct_function_t;
 

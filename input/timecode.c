@@ -1,7 +1,7 @@
 /*****************************************************************************
  * timecode.c: timecode file input
  *****************************************************************************
- * Copyright (C) 2010-2011 x264 project
+ * Copyright (C) 2010-2012 x264 project
  *
  * Authors: Yusuke Nakamura <muken.the.vfrmaniac@gmail.com>
  *
@@ -101,18 +101,18 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
 
     ret = fscanf( tcfile_in, "# timecode format v%d", &tcfv );
     FAIL_IF_ERROR( ret != 1 || (tcfv != 1 && tcfv != 2), "unsupported timecode format\n" )
-
+#define NO_TIMECODE_LINE (buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r')
     if( tcfv == 1 )
     {
         uint64_t file_pos;
         double assume_fps, seq_fps;
-        int start, end;
+        int start, end = -1;
         int prev_start = -1, prev_end = -1;
 
         h->assume_fps = 0;
         for( num = 2; fgets( buff, sizeof(buff), tcfile_in ) != NULL; num++ )
         {
-            if( buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r' )
+            if( NO_TIMECODE_LINE )
                 continue;
             FAIL_IF_ERROR( sscanf( buff, "assume %lf", &h->assume_fps ) != 1 && sscanf( buff, "Assume %lf", &h->assume_fps ) != 1,
                            "tcfile parsing error: assumed fps not found\n" )
@@ -124,7 +124,7 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
         h->stored_pts_num = 0;
         for( seq_num = 0; fgets( buff, sizeof(buff), tcfile_in ) != NULL; num++ )
         {
-            if( buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r' )
+            if( NO_TIMECODE_LINE )
             {
                 if( sscanf( buff, "# TDecimate Mode 3:  Last Frame = %d", &end ) == 1 )
                     h->stored_pts_num = end + 1;
@@ -140,7 +140,7 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
                 ++seq_num;
         }
         if( !h->stored_pts_num )
-            h->stored_pts_num = end + 1;
+            h->stored_pts_num = end + 2;
         timecodes_num = h->stored_pts_num;
         fseek( tcfile_in, file_pos, SEEK_SET );
 
@@ -158,10 +158,9 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
         if( assume_fps < 0 )
             goto fail;
         timecodes[0] = 0;
-        for( num = seq_num = 0; num < timecodes_num - 1; )
+        for( num = seq_num = 0; num < timecodes_num - 1 && fgets( buff, sizeof(buff), tcfile_in ) != NULL; )
         {
-            fgets( buff, sizeof(buff), tcfile_in );
-            if( buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r' )
+            if( NO_TIMECODE_LINE )
                 continue;
             ret = sscanf( buff, "%d,%d,%lf", &start, &end, &seq_fps );
             if( ret != 3 )
@@ -179,6 +178,8 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
                     timecodes[num + 1] = timecodes[num] + 1 / seq_fps;
             }
         }
+        for( ; num < timecodes_num - 1; num++ )
+            timecodes[num + 1] = timecodes[num] + 1 / assume_fps;
         if( h->auto_timebase_den || h->auto_timebase_num )
             fpss[seq_num] = h->assume_fps;
 
@@ -191,10 +192,9 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
             fseek( tcfile_in, file_pos, SEEK_SET );
             assume_fps_sig = sigexp10( h->assume_fps, &exponent );
             assume_fps = MKV_TIMEBASE_DEN / ( round( MKV_TIMEBASE_DEN / assume_fps_sig ) / exponent );
-            for( num = 0; num < timecodes_num - 1; )
+            for( num = 0; num < timecodes_num - 1 && fgets( buff, sizeof(buff), tcfile_in ) != NULL; )
             {
-                fgets( buff, sizeof(buff), tcfile_in );
-                if( buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r' )
+                if( NO_TIMECODE_LINE )
                     continue;
                 ret = sscanf( buff, "%d,%d,%lf", &start, &end, &seq_fps );
                 if( ret != 3 )
@@ -206,6 +206,8 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
                 for( num = start; num <= end && num < timecodes_num - 1; num++ )
                     timecodes[num + 1] = timecodes[num] + 1 / seq_fps;
             }
+            for( ; num < timecodes_num - 1; num++ )
+                timecodes[num + 1] = timecodes[num] + 1 / assume_fps;
         }
         if( fpss )
         {
@@ -223,7 +225,7 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
         h->stored_pts_num = 0;
         while( fgets( buff, sizeof(buff), tcfile_in ) != NULL )
         {
-            if( buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r' )
+            if( NO_TIMECODE_LINE )
             {
                 if( !h->stored_pts_num )
                     file_pos = ftell( tcfile_in );
@@ -239,21 +241,24 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
         if( !timecodes )
             return -1;
 
-        fgets( buff, sizeof(buff), tcfile_in );
-        ret = sscanf( buff, "%lf", &timecodes[0] );
-        timecodes[0] *= 1e-3;         /* Timecode format v2 is expressed in milliseconds. */
-        FAIL_IF_ERROR( ret != 1, "invalid input tcfile for frame 0\n" )
-        for( num = 1; num < timecodes_num; )
+        num = 0;
+        if( fgets( buff, sizeof(buff), tcfile_in ) != NULL )
         {
-            fgets( buff, sizeof(buff), tcfile_in );
-            if( buff[0] == '#' || buff[0] == '\n' || buff[0] == '\r' )
-                continue;
-            ret = sscanf( buff, "%lf", &timecodes[num] );
-            timecodes[num] *= 1e-3;         /* Timecode format v2 is expressed in milliseconds. */
-            FAIL_IF_ERROR( ret != 1 || timecodes[num] <= timecodes[num - 1],
-                           "invalid input tcfile for frame %d\n", num )
-            ++num;
+            ret = sscanf( buff, "%lf", &timecodes[0] );
+            timecodes[0] *= 1e-3;         /* Timecode format v2 is expressed in milliseconds. */
+            FAIL_IF_ERROR( ret != 1, "invalid input tcfile for frame 0\n" )
+            for( num = 1; num < timecodes_num && fgets( buff, sizeof(buff), tcfile_in ) != NULL; )
+            {
+                if( NO_TIMECODE_LINE )
+                    continue;
+                ret = sscanf( buff, "%lf", &timecodes[num] );
+                timecodes[num] *= 1e-3;         /* Timecode format v2 is expressed in milliseconds. */
+                FAIL_IF_ERROR( ret != 1 || timecodes[num] <= timecodes[num - 1],
+                               "invalid input tcfile for frame %d\n", num )
+                ++num;
+            }
         }
+        FAIL_IF_ERROR( num < timecodes_num, "failed to read input tcfile for frame %d", num )
 
         if( timecodes_num == 1 )
             h->timebase_den = info->fps_num;
@@ -300,7 +305,7 @@ static int parse_tcfile( FILE *tcfile_in, timecode_hnd_t *h, video_info_t *info 
             h->assume_fps = (double)info->fps_num / info->fps_den;
         h->last_timecode = timecodes[timecodes_num - 1];
     }
-
+#undef NO_TIMECODE_LINE
     if( h->auto_timebase_den || h->auto_timebase_num )
     {
         uint64_t i = gcd( h->timebase_num, h->timebase_den );
@@ -342,11 +347,15 @@ static int open_file( char *psz_filename, hnd_t *p_handle, video_info_t *info, c
     FAIL_IF_ERROR( !h, "malloc failed\n" )
     h->input = cli_input;
     h->p_handle = *p_handle;
+    h->pts = NULL;
     if( opt->timebase )
     {
         ret = sscanf( opt->timebase, "%"SCNu64"/%"SCNu64, &h->timebase_num, &h->timebase_den );
         if( ret == 1 )
+        {
             h->timebase_num = strtoul( opt->timebase, NULL, 10 );
+            h->timebase_den = 0; /* set later by auto timebase generation */
+        }
         FAIL_IF_ERROR( h->timebase_num > UINT32_MAX || h->timebase_den > UINT32_MAX,
                        "timebase you specified exceeds H.264 maximum\n" )
     }
@@ -358,8 +367,6 @@ static int open_file( char *psz_filename, hnd_t *p_handle, video_info_t *info, c
         h->timebase_den = 0;             /* set later by auto timebase generation */
     timecode_input.picture_alloc = h->input.picture_alloc;
     timecode_input.picture_clean = h->input.picture_clean;
-
-    *p_handle = h;
 
     tcfile_in = fopen( psz_filename, "rb" );
     FAIL_IF_ERROR( !tcfile_in, "can't open `%s'\n", psz_filename )
@@ -383,6 +390,7 @@ static int open_file( char *psz_filename, hnd_t *p_handle, video_info_t *info, c
     info->timebase_den = h->timebase_den;
     info->vfr = 1;
 
+    *p_handle = h;
     return 0;
 }
 

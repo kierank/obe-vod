@@ -1,10 +1,11 @@
 /*****************************************************************************
  * vlc.c : vlc tables
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Jason Garrett-Glaser <darkshikari@gmail.com>
+ *          Henrik Gramner <hengar-6@student.ltu.se>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,16 +27,19 @@
 
 #include "common.h"
 
-const vlc_t x264_coeff0_token[5] =
+/* [nC] */
+const vlc_t x264_coeff0_token[6] =
 {
     { 0x1, 1 }, /* str=1 */
     { 0x3, 2 }, /* str=11 */
     { 0xf, 4 }, /* str=1111 */
     { 0x3, 6 }, /* str=000011 */
     { 0x1, 2 }, /* str=01 */
+    { 0x1, 1 }, /* str=1 */
 };
 
-const vlc_t x264_coeff_token[5][16][4] =
+/* [nC][i_total_coeff-1][i_trailing] */
+const vlc_t x264_coeff_token[6][16][4] =
 {
     { /* table 0 */
         { /* i_total 1 */
@@ -440,6 +444,53 @@ const vlc_t x264_coeff_token[5][16][4] =
             { 0x0, 7 }, /* str=0000000 */
         },
     },
+    { /* table 5 */
+        { /* i_total 1 */
+            { 0xf, 7 }, /* str=0001111 */
+            { 0x1, 2 }, /* str=01 */
+        },
+        { /* i_total 2 */
+            { 0xe, 7 }, /* str=0001110 */
+            { 0xd, 7 }, /* str=0001101 */
+            { 0x1, 3 }, /* str=001 */
+        },
+        { /* i_total 3 */
+            { 0x7, 9 }, /* str=000000111 */
+            { 0xc, 7 }, /* str=0001100 */
+            { 0xb, 7 }, /* str=0001011 */
+            { 0x1, 5 }, /* str=00001 */
+        },
+        { /* i_total 4 */
+            { 0x6, 9 }, /* str=000000110 */
+            { 0x5, 9 }, /* str=000000101 */
+            { 0xa, 7 }, /* str=0001010 */
+            { 0x1, 6 }, /* str=000001 */
+        },
+        { /* i_total 5 */
+            { 0x7, 10 }, /* str=0000000111 */
+            { 0x6, 10 }, /* str=0000000110 */
+            { 0x4, 9 },  /* str=000000100 */
+            { 0x9, 7 },  /* str=0001001 */
+        },
+        { /* i_total 6 */
+            { 0x7, 11 }, /* str=00000000111 */
+            { 0x6, 11 }, /* str=00000000110 */
+            { 0x5, 10 }, /* str=0000000101 */
+            { 0x8, 7 },  /* str=0001000 */
+        },
+        { /* i_total 7 */
+            { 0x7, 12 }, /* str=000000000111 */
+            { 0x6, 12 }, /* str=000000000110 */
+            { 0x5, 11 }, /* str=00000000101 */
+            { 0x4, 10 }, /* str=0000000100 */
+        },
+        { /* i_total 8 */
+            { 0x7, 13 }, /* str=0000000000111 */
+            { 0x5, 12 }, /* str=000000000101 */
+            { 0x4, 12 }, /* str=000000000100 */
+            { 0x4, 11 }, /* str=00000000100 */
+        },
+    },
 };
 
 /* [i_total_coeff-1][i_total_zeros] */
@@ -613,7 +664,7 @@ const vlc_t x264_total_zeros[15][16] =
 };
 
 /* [i_total_coeff-1][i_total_zeros] */
-const vlc_t x264_total_zeros_dc[3][4] =
+const vlc_t x264_total_zeros_2x2_dc[3][4] =
 {
     { /* i_total 1 */
         { 0x1, 1 }, /* str=1 */
@@ -632,8 +683,62 @@ const vlc_t x264_total_zeros_dc[3][4] =
     },
 };
 
-/* x264_run_before[__MIN( i_zero_left -1, 6 )][run_before] */
-const vlc_t x264_run_before[7][16] =
+/* [i_total_coeff-1][i_total_zeros] */
+const vlc_t x264_total_zeros_2x4_dc[7][8] =
+{
+    { /* i_total 1 */
+        { 0x1, 1 }, /* str=1 */
+        { 0x2, 3 }, /* str=010 */
+        { 0x3, 3 }, /* str=011 */
+        { 0x2, 4 }, /* str=0010 */
+        { 0x3, 4 }, /* str=0011 */
+        { 0x1, 4 }, /* str=0001 */
+        { 0x1, 5 }, /* str=00001 */
+        { 0x0, 5 }, /* str=00000 */
+    },
+    { /* i_total 2 */
+        { 0x0, 3 }, /* str=000 */
+        { 0x1, 2 }, /* str=01 */
+        { 0x1, 3 }, /* str=001 */
+        { 0x4, 3 }, /* str=100 */
+        { 0x5, 3 }, /* str=101 */
+        { 0x6, 3 }, /* str=110 */
+        { 0x7, 3 }, /* str=111 */
+    },
+    { /* i_total 3 */
+        { 0x0, 3 }, /* str=000 */
+        { 0x1, 3 }, /* str=001 */
+        { 0x1, 2 }, /* str=01 */
+        { 0x2, 2 }, /* str=10 */
+        { 0x6, 3 }, /* str=110 */
+        { 0x7, 3 }, /* str=111 */
+    },
+    { /* i_total 4 */
+        { 0x6, 3 }, /* str=110 */
+        { 0x0, 2 }, /* str=00 */
+        { 0x1, 2 }, /* str=01 */
+        { 0x2, 2 }, /* str=10 */
+        { 0x7, 3 }, /* str=111 */
+    },
+    { /* i_total 5 */
+        { 0x0, 2 }, /* str=00 */
+        { 0x1, 2 }, /* str=01 */
+        { 0x2, 2 }, /* str=10 */
+        { 0x3, 2 }, /* str=11 */
+    },
+    { /* i_total 6 */
+        { 0x0, 2 }, /* str=00 */
+        { 0x1, 2 }, /* str=01 */
+        { 0x1, 1 }, /* str=1 */
+    },
+    { /* i_total 7 */
+        { 0x0, 1 }, /* str=0 */
+        { 0x1, 1 }, /* str=1 */
+    }
+};
+
+/* [MIN( i_zero_left-1, 6 )][run_before] */
+static const vlc_t run_before[7][16] =
 {
     { /* i_zero_left 1 */
         { 0x1, 1 }, /* str=1 */
@@ -674,7 +779,7 @@ const vlc_t x264_run_before[7][16] =
         { 0x5, 3 }, /* str=101 */
         { 0x4, 3 }, /* str=100 */
     },
-    { /* i_zero_left 7 */
+    { /* i_zero_left >6 */
         { 0x7, 3 }, /* str=111 */
         { 0x6, 3 }, /* str=110 */
         { 0x5, 3 }, /* str=101 */
@@ -694,8 +799,9 @@ const vlc_t x264_run_before[7][16] =
 };
 
 vlc_large_t x264_level_token[7][LEVEL_TABLE_SIZE];
+uint32_t x264_run_before[1<<16];
 
-void x264_cavlc_init( void )
+void x264_cavlc_init( x264_t *h )
 {
     for( int i_suffix = 0; i_suffix < 7; i_suffix++ )
         for( int16_t level = -LEVEL_TABLE_SIZE/2; level < LEVEL_TABLE_SIZE/2; level++ )
@@ -735,4 +841,27 @@ void x264_cavlc_init( void )
                 i_next++;
             vlc->i_next = i_next;
         }
+
+    for( int i = 1; i < (1<<16); i++ )
+    {
+        x264_run_level_t runlevel;
+        ALIGNED_ARRAY_16( dctcoef, dct, [16] );
+        int size = 0;
+        int bits = 0;
+        for( int j = 0; j < 16; j++ )
+            dct[j] = i&(1<<j);
+        int total = h->quantf.coeff_level_run[DCT_LUMA_4x4]( dct, &runlevel );
+        int zeros = runlevel.last + 1 - total;
+        for( int j = 0; j < total-1 && zeros > 0; j++ )
+        {
+            int idx = X264_MIN(zeros, 7) - 1;
+            int run = runlevel.run[j];
+            int len = run_before[idx][run].i_size;
+            size += len;
+            bits <<= len;
+            bits |= run_before[idx][run].i_bits;
+            zeros -= run;
+        }
+        x264_run_before[i] = (bits << 5) + size;
+    }
 }

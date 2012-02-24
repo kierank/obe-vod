@@ -1,7 +1,7 @@
 /*****************************************************************************
  * osdep.h: platform-specific code
  *****************************************************************************
- * Copyright (C) 2007-2011 x264 project
+ * Copyright (C) 2007-2012 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -31,14 +31,9 @@
 #define _FILE_OFFSET_BITS 64
 #include <stdio.h>
 #include <sys/stat.h>
+#include <inttypes.h>
 
 #include "config.h"
-
-#if HAVE_STDINT_H
-#include <stdint.h>
-#else
-#include <inttypes.h>
-#endif
 
 #if !HAVE_LOG2F
 #define log2f(x) (logf(x)/0.693147180559945f)
@@ -94,23 +89,27 @@
 // - armcc can't either, but is nice enough to actually tell you so
 // - Apple gcc only maintains 4 byte alignment
 // - llvm can align the stack, but only in svn and (unrelated) it exposes bugs in all released GNU binutils...
+
+#define ALIGNED_ARRAY_EMU( mask, type, name, sub1, ... )\
+    uint8_t name##_u [sizeof(type sub1 __VA_ARGS__) + mask]; \
+    type (*name) __VA_ARGS__ = (void*)((intptr_t)(name##_u+mask) & ~mask)
+
 #if ARCH_ARM && SYS_MACOSX
-#define ALIGNED_ARRAY_8( type, name, sub1, ... )\
-    uint8_t name##_u [sizeof(type sub1 __VA_ARGS__) + 7]; \
-    type (*name) __VA_ARGS__ = (void*)((intptr_t)(name##_u+7) & ~7)
+#define ALIGNED_ARRAY_8( ... ) ALIGNED_ARRAY_EMU( 7, __VA_ARGS__ )
 #else
 #define ALIGNED_ARRAY_8( type, name, sub1, ... )\
     ALIGNED_8( type name sub1 __VA_ARGS__ )
 #endif
 
 #if ARCH_ARM
-#define ALIGNED_ARRAY_16( type, name, sub1, ... )\
-    uint8_t name##_u [sizeof(type sub1 __VA_ARGS__) + 15];\
-    type (*name) __VA_ARGS__ = (void*)((intptr_t)(name##_u+15) & ~15)
+#define ALIGNED_ARRAY_16( ... ) ALIGNED_ARRAY_EMU( 15, __VA_ARGS__ )
 #else
 #define ALIGNED_ARRAY_16( type, name, sub1, ... )\
     ALIGNED_16( type name sub1 __VA_ARGS__ )
 #endif
+
+#define ALIGNED_ARRAY_32( ... ) ALIGNED_ARRAY_EMU( 31, __VA_ARGS__ )
+#define ALIGNED_ARRAY_64( ... ) ALIGNED_ARRAY_EMU( 63, __VA_ARGS__ )
 
 #define UNINIT(x) x=x
 

@@ -1,7 +1,7 @@
 /*****************************************************************************
  * pixel.c: ppc pixel metrics
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Eric Petit <eric.petit@lapsus.org>
  *          Guillaume Poirier <gpoirier@mplayerhq.hu>
@@ -2009,7 +2009,7 @@ SATD_X( 4x4 )
 
 
 #define INTRA_MBCMP_8x8( mbcmp )\
-void intra_##mbcmp##_x3_8x8_altivec( uint8_t *fenc, uint8_t edge[33], int res[3] )\
+void intra_##mbcmp##_x3_8x8_altivec( uint8_t *fenc, uint8_t edge[36], int res[3] )\
 {\
     ALIGNED_8( uint8_t pix[8*FDEC_STRIDE] );\
     x264_predict_8x8_v_c( pix, edge );\

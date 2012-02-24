@@ -1,7 +1,7 @@
 /*****************************************************************************
  * rectangle.c: rectangle filling
  *****************************************************************************
- * Copyright (C) 2010-2011 x264 project
+ * Copyright (C) 2010-2012 x264 project
  *
  * Authors: Jason Garrett-Glaser <darkshikari@gmail.com>
  *
@@ -26,7 +26,7 @@
 #include "common.h"
 
 #define CACHE_FUNC(name,size,width,height)\
-void x264_macroblock_cache_##name##_##width##_##height( void *target, uint32_t val )\
+static void x264_macroblock_cache_##name##_##width##_##height( void *target, uint32_t val )\
 {\
     x264_macroblock_cache_rect( target, width*size, height, size, val );\
 }

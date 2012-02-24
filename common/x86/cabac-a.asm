@@ -1,7 +1,7 @@
 ;*****************************************************************************
 ;* cabac-a.asm: x86 cabac
 ;*****************************************************************************
-;* Copyright (C) 2008-2011 x264 project
+;* Copyright (C) 2008-2012 x264 project
 ;*
 ;* Authors: Loren Merritt <lorenm@u.washington.edu>
 ;*          Jason Garrett-Glaser <darkshikari@gmail.com>
@@ -34,10 +34,10 @@ cextern cabac_transition
 cextern cabac_renorm_shift
 
 ; t3 must be ecx, since it's used for shift.
-%ifdef WIN64
-    DECLARE_REG_TMP 3,1,2,0,4,5,6,2
+%if WIN64
+    DECLARE_REG_TMP 3,1,2,0,6,5,4,2
     %define pointer resq
-%elifdef ARCH_X86_64
+%elif ARCH_X86_64
     DECLARE_REG_TMP 0,1,2,3,4,5,6,6
     %define pointer resq
 %else
@@ -61,11 +61,11 @@ endstruc
 %macro LOAD_GLOBAL 4
 %ifdef PIC
     ; this would be faster if the arrays were declared in asm, so that I didn't have to duplicate the lea
-    lea   r11, [%2]
+    lea   r7, [%2]
     %ifnidn %3, 0
-    add   r11, %3
+    add   r7, %3
     %endif
-    movzx %1, byte [r11+%4]
+    movzx %1, byte [r7+%4]
 %else
     movzx %1, byte [%2+%3+%4]
 %endif
@@ -81,6 +81,9 @@ cglobal cabac_encode_decision_asm, 0,7
     and   t4d, t6d
     shr   t5d, 6
     movifnidn t2d, r2m
+%if WIN64
+    PUSH r7
+%endif
     LOAD_GLOBAL t5d, cabac_range_lps-4, t5, t4*2
     LOAD_GLOBAL t4d, cabac_transition, t2, t6*2
     and   t6d, 1
@@ -95,10 +98,13 @@ cglobal cabac_encode_decision_asm, 0,7
     mov   t4d, t3d
     shr   t3d, 3
     LOAD_GLOBAL t3d, cabac_renorm_shift, 0, t3
+%if WIN64
+    POP r7
+%endif
     shl   t4d, t3b
     shl   t6d, t3b
-    add   t3d, [t0+cb.queue]
     mov   [t0+cb.range], t4d
+    add   t3d, [t0+cb.queue]
     jge cabac_putbyte
 .update_queue_low:
     mov   [t0+cb.low], t6d
@@ -113,7 +119,7 @@ cglobal cabac_encode_bypass_asm, 0,3
     lea       t7d, [t7*2+t3]
     mov       t3d, [t0+cb.queue]
     inc       t3d
-%ifdef UNIX64 ; .putbyte compiles to nothing but a jmp
+%if UNIX64 ; .putbyte compiles to nothing but a jmp
     jge cabac_putbyte
 %else
     jge .putbyte
@@ -144,12 +150,11 @@ cglobal cabac_encode_terminal_asm, 0,3
     PROLOGUE 0,7
     mov t3d, [t0+cb.queue]
     mov t6d, [t0+cb.low]
-    jmp cabac_putbyte
 
 cabac_putbyte:
     ; alive: t0=cb t3=queue t6=low
-%ifdef WIN64
-    DECLARE_REG_TMP 3,4,1,0,2,5,6,10
+%if WIN64
+    DECLARE_REG_TMP 3,6,1,0,2,5,4
 %endif
     mov   t1d, -1
     add   t3d, 10
@@ -163,10 +168,10 @@ cabac_putbyte:
     cmp   t2b, 0xff ; FIXME is a 32bit op faster?
     jz    .postpone
     mov    t1, [t0+cb.p]
-    add   [t1-1], dh ; t2h
-    dec   dh
+    add   [t1-1], t2h
+    dec   t2h
 .loop_outstanding:
-    mov   [t1], dh
+    mov   [t1], t2h
     inc   t1
     dec   t5d
     jge .loop_outstanding

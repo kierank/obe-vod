@@ -2,7 +2,14 @@
 
 include config.mak
 
+vpath %.c $(SRCPATH)
+vpath %.h $(SRCPATH)
+vpath %.S $(SRCPATH)
+vpath %.asm $(SRCPATH)
+vpath %.rc $(SRCPATH)
+
 all: default
+default:
 
 SRCS = common/mc.c common/predict.c common/pixel.c common/macroblock.c \
        common/frame.c common/dct.c common/cpu.c common/cabac.c \
@@ -22,6 +29,11 @@ SRCCLI = x264.c input/input.c input/raw.c input/y4m.c input/scc.c \
          filters/video/select_every.c filters/video/crop.c filters/video/depth.c
 
 SRCSO =
+OBJS =
+OBJSO =
+OBJCLI =
+
+OBJCHK = tools/checkasm.o
 
 CONFIG := $(shell cat config.h)
 
@@ -80,20 +92,21 @@ X86SRC = $(X86SRC0:%=common/x86/%)
 ifeq ($(ARCH),X86)
 ARCH_X86 = yes
 ASMSRC   = $(X86SRC) common/x86/pixel-32.asm
+ASFLAGS += -DARCH_X86_64=0
 endif
 
 ifeq ($(ARCH),X86_64)
 ARCH_X86 = yes
-ASMSRC   = $(X86SRC:-32.asm=-64.asm)
-ASFLAGS += -DARCH_X86_64
+ASMSRC   = $(X86SRC:-32.asm=-64.asm) common/x86/trellis-64.asm
+ASFLAGS += -DARCH_X86_64=1
 endif
 
 ifdef ARCH_X86
-ASFLAGS += -Icommon/x86/
+ASFLAGS += -I$(SRCPATH)/common/x86/
 SRCS   += common/x86/mc-c.c common/x86/predict-c.c
 OBJASM  = $(ASMSRC:%.asm=%.o)
 $(OBJASM): common/x86/x86inc.asm common/x86/x86util.asm
-checkasm: tools/checkasm-a.o
+OBJCHK += tools/checkasm-a.o
 endif
 endif
 
@@ -129,37 +142,37 @@ ifneq ($(HAVE_GETOPT_LONG),1)
 SRCCLI += extras/getopt.c
 endif
 
-ifneq ($(SONAME),)
-ifeq ($(SYS),WINDOWS)
-SRCSO += x264dll.c
-endif
-endif
+OBJS   += $(SRCS:%.c=%.o)
+OBJCLI += $(SRCCLI:%.c=%.o)
+OBJSO  += $(SRCSO:%.c=%.o)
 
-OBJS = $(SRCS:%.c=%.o)
-OBJCLI = $(SRCCLI:%.c=%.o)
-OBJSO = $(SRCSO:%.c=%.o)
-DEP  = depend
-
-.PHONY: all default fprofiled clean distclean install uninstall dox test testclean lib-static lib-shared cli install-lib-dev install-lib-static install-lib-shared install-cli
-
-default: $(DEP)
+.PHONY: all default fprofiled clean distclean install uninstall lib-static lib-shared cli install-lib-dev install-lib-static install-lib-shared install-cli
 
 cli: obe-vod$(EXE)
 lib-static: $(LIBX264)
 lib-shared: $(SONAME)
 
 $(LIBX264): .depend $(OBJS) $(OBJASM)
+	rm -f $(LIBX264)
 	$(AR)$@ $(OBJS) $(OBJASM)
 	$(if $(RANLIB), $(RANLIB) $@)
 
 $(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(LD)$@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
+ifneq ($(EXE),)
+.PHONY: obe-vod checkasm
+obe-vod: obe-vod$(EXE)
+checkasm: checkasm$(EXE)
+endif
+
 obe-vod$(EXE): .depend $(OBJCLI) $(CLI_LIBX264)
 	$(LD)$@ $(OBJCLI) $(CLI_LIBX264) $(LDFLAGSCLI) $(LDFLAGS)
 
-checkasm: tools/checkasm.o $(LIBX264)
-	$(LD)$@ $+ $(LDFLAGS)
+checkasm$(EXE): .depend $(OBJCHK) $(LIBX264)
+	$(LD)$@ $(OBJCHK) $(LIBX264) $(LDFLAGS)
+
+$(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK): .depend
 
 %.o: %.asm
 	$(AS) $(ASFLAGS) -o $@ $<
@@ -169,9 +182,15 @@ checkasm: tools/checkasm.o $(LIBX264)
 	$(AS) $(ASFLAGS) -o $@ $<
 	-@ $(if $(STRIP), $(STRIP) -x $@) # delete local/anonymous symbols, so they don't show up in oprofile
 
+%.dll.o: %.rc
+	$(RC) -DDLL -o $@ $<
+
+%.o: %.rc
+	$(RC) -o $@ $<
+
 .depend: config.mak
 	@rm -f .depend
-	@$(foreach SRC, $(SRCS) $(SRCCLI) $(SRCSO), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:%.c=%.o) $(DEPMM) 1>> .depend;)
+	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS) $(SRCCLI) $(SRCSO)), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:$(SRCPATH)/%.c=%.o) $(DEPMM) 1>> .depend;)
 
 config.mak:
 	./configure
@@ -219,13 +238,14 @@ distclean: clean
 install: obe-vod$(EXE) $(SONAME)
 	install -d $(DESTDIR)$(bindir)
 	install obe-vod$(EXE) $(DESTDIR)$(bindir)
-	$(if $(IMPLIBNAME), install -m 644 $(IMPLIBNAME) $(DESTDIR)$(libdir))
-ifneq ($(SYS),MINGW)
-	ldconfig
-endif
 
 uninstall:
 	rm -f $(DESTDIR)$(bindir)/obe-vod$(EXE)
+ifneq ($(IMPLIBNAME),)
+	rm -f $(DESTDIR)$(bindir)/$(SONAME) $(DESTDIR)$(libdir)/$(IMPLIBNAME)
+else ifneq ($(SONAME),)
+	rm -f $(DESTDIR)$(libdir)/$(SONAME) $(DESTDIR)$(libdir)/libx264.$(SOSUFFIX)
+endif
 
 etags: TAGS
 

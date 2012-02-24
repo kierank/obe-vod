@@ -1,7 +1,7 @@
 /*****************************************************************************
  * predict.h: intra prediction
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -28,8 +28,8 @@
 #define X264_PREDICT_H
 
 typedef void (*x264_predict_t)( pixel *src );
-typedef void (*x264_predict8x8_t)( pixel *src, pixel edge[33] );
-typedef void (*x264_predict_8x8_filter_t) ( pixel *src, pixel edge[33], int i_neighbor, int i_filters );
+typedef void (*x264_predict8x8_t)( pixel *src, pixel edge[36] );
+typedef void (*x264_predict_8x8_filter_t) ( pixel *src, pixel edge[36], int i_neighbor, int i_filters );
 
 enum intra_chroma_pred_e
 {
@@ -42,7 +42,7 @@ enum intra_chroma_pred_e
     I_PRED_CHROMA_DC_TOP  = 5,
     I_PRED_CHROMA_DC_128  = 6
 };
-static const uint8_t x264_mb_pred_mode8x8c_fix[7] =
+static const uint8_t x264_mb_chroma_pred_mode_fix[7] =
 {
     I_PRED_CHROMA_DC, I_PRED_CHROMA_H, I_PRED_CHROMA_V, I_PRED_CHROMA_P,
     I_PRED_CHROMA_DC, I_PRED_CHROMA_DC,I_PRED_CHROMA_DC
@@ -109,9 +109,9 @@ enum intra8x8_pred_e
     I_PRED_8x8_DC_128  = 11,
 };
 
-void x264_predict_8x8_dc_c  ( pixel *src, pixel edge[33] );
-void x264_predict_8x8_h_c   ( pixel *src, pixel edge[33] );
-void x264_predict_8x8_v_c   ( pixel *src, pixel edge[33] );
+void x264_predict_8x8_dc_c  ( pixel *src, pixel edge[36] );
+void x264_predict_8x8_h_c   ( pixel *src, pixel edge[36] );
+void x264_predict_8x8_v_c   ( pixel *src, pixel edge[36] );
 void x264_predict_4x4_dc_c  ( pixel *src );
 void x264_predict_4x4_h_c   ( pixel *src );
 void x264_predict_4x4_v_c   ( pixel *src );
@@ -123,9 +123,14 @@ void x264_predict_8x8c_dc_c ( pixel *src );
 void x264_predict_8x8c_h_c  ( pixel *src );
 void x264_predict_8x8c_v_c  ( pixel *src );
 void x264_predict_8x8c_p_c  ( pixel *src );
+void x264_predict_8x16c_dc_c( pixel *src );
+void x264_predict_8x16c_h_c ( pixel *src );
+void x264_predict_8x16c_v_c ( pixel *src );
+void x264_predict_8x16c_p_c ( pixel *src );
 
 void x264_predict_16x16_init ( int cpu, x264_predict_t pf[7] );
 void x264_predict_8x8c_init  ( int cpu, x264_predict_t pf[7] );
+void x264_predict_8x16c_init ( int cpu, x264_predict_t pf[7] );
 void x264_predict_4x4_init   ( int cpu, x264_predict_t pf[12] );
 void x264_predict_8x8_init   ( int cpu, x264_predict8x8_t pf[12], x264_predict_8x8_filter_t *predict_filter );
 

@@ -1,7 +1,7 @@
 /*****************************************************************************
  * x264.h: x264 public header
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
@@ -41,7 +41,7 @@
 
 #include "x264_config.h"
 
-#define X264_BUILD 116
+#define X264_BUILD 120
 
 /* x264_t:
  *      opaque handler for encoder */
@@ -100,30 +100,38 @@ typedef struct
  ****************************************************************************/
 /* CPU flags
  */
-#define X264_CPU_CACHELINE_32   0x000001  /* avoid memory loads that span the border between two cachelines */
-#define X264_CPU_CACHELINE_64   0x000002  /* 32/64 is the size of a cacheline in bytes */
-#define X264_CPU_ALTIVEC        0x000004
-#define X264_CPU_MMX            0x000008
-#define X264_CPU_MMXEXT         0x000010  /* MMX2 aka MMXEXT aka ISSE */
-#define X264_CPU_SSE            0x000020
-#define X264_CPU_SSE2           0x000040
-#define X264_CPU_SSE2_IS_SLOW   0x000080  /* avoid most SSE2 functions on Athlon64 */
-#define X264_CPU_SSE2_IS_FAST   0x000100  /* a few functions are only faster on Core2 and Phenom */
-#define X264_CPU_SSE3           0x000200
-#define X264_CPU_SSSE3          0x000400
-#define X264_CPU_SHUFFLE_IS_FAST 0x000800 /* Penryn, Nehalem, and Phenom have fast shuffle units */
-#define X264_CPU_STACK_MOD4     0x001000  /* if stack is only mod4 and not mod16 */
-#define X264_CPU_SSE4           0x002000  /* SSE4.1 */
-#define X264_CPU_SSE42          0x004000  /* SSE4.2 */
-#define X264_CPU_SSE_MISALIGN   0x008000  /* Phenom support for misaligned SSE instruction arguments */
-#define X264_CPU_LZCNT          0x010000  /* Phenom support for "leading zero count" instruction. */
-#define X264_CPU_ARMV6          0x020000
-#define X264_CPU_NEON           0x040000  /* ARM NEON */
-#define X264_CPU_FAST_NEON_MRC  0x080000  /* Transfer from NEON to ARM register is fast (Cortex-A9) */
-#define X264_CPU_SLOW_CTZ       0x100000  /* BSR/BSF x86 instructions are really slow on some CPUs */
-#define X264_CPU_SLOW_ATOM      0x200000  /* The Atom just sucks */
-#define X264_CPU_AVX            0x400000  /* AVX support: requires OS support even if YMM registers
-                                           * aren't used. */
+#define X264_CPU_CACHELINE_32    0x0000001  /* avoid memory loads that span the border between two cachelines */
+#define X264_CPU_CACHELINE_64    0x0000002  /* 32/64 is the size of a cacheline in bytes */
+#define X264_CPU_ALTIVEC         0x0000004
+#define X264_CPU_MMX             0x0000008
+#define X264_CPU_MMX2            0x0000010  /* MMX2 aka MMXEXT aka ISSE */
+#define X264_CPU_MMXEXT          X264_CPU_MMX2
+#define X264_CPU_SSE             0x0000020
+#define X264_CPU_SSE2            0x0000040
+#define X264_CPU_SSE2_IS_SLOW    0x0000080  /* avoid most SSE2 functions on Athlon64 */
+#define X264_CPU_SSE2_IS_FAST    0x0000100  /* a few functions are only faster on Core2 and Phenom */
+#define X264_CPU_SSE3            0x0000200
+#define X264_CPU_SSSE3           0x0000400
+#define X264_CPU_SHUFFLE_IS_FAST 0x0000800  /* Penryn, Nehalem, and Phenom have fast shuffle units */
+#define X264_CPU_STACK_MOD4      0x0001000  /* if stack is only mod4 and not mod16 */
+#define X264_CPU_SSE4            0x0002000  /* SSE4.1 */
+#define X264_CPU_SSE42           0x0004000  /* SSE4.2 */
+#define X264_CPU_SSE_MISALIGN    0x0008000  /* Phenom support for misaligned SSE instruction arguments */
+#define X264_CPU_LZCNT           0x0010000  /* Phenom support for "leading zero count" instruction. */
+#define X264_CPU_ARMV6           0x0020000
+#define X264_CPU_NEON            0x0040000  /* ARM NEON */
+#define X264_CPU_FAST_NEON_MRC   0x0080000  /* Transfer from NEON to ARM register is fast (Cortex-A9) */
+#define X264_CPU_SLOW_CTZ        0x0100000  /* BSR/BSF x86 instructions are really slow on some CPUs */
+#define X264_CPU_SLOW_ATOM       0x0200000  /* The Atom just sucks */
+#define X264_CPU_AVX             0x0400000  /* AVX support: requires OS support even if YMM registers
+                                             * aren't used. */
+#define X264_CPU_XOP             0x0800000  /* AMD XOP */
+#define X264_CPU_FMA4            0x1000000  /* AMD FMA4 */
+#define X264_CPU_AVX2            0x2000000  /* AVX2 */
+#define X264_CPU_FMA3            0x4000000  /* Intel FMA3 */
+#define X264_CPU_BMI1            0x8000000  /* BMI1 */
+#define X264_CPU_BMI2           0x10000000  /* BMI2 */
+#define X264_CPU_TBM            0x20000000  /* AMD TBM */
 
 /* Analyse flags
  */
@@ -172,6 +180,7 @@ static const char * const x264_fullrange_names[] = { "off", "on", 0 };
 static const char * const x264_colorprim_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", 0 };
 static const char * const x264_transfer_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100", "log316", 0 };
 static const char * const x264_colmatrix_names[] = { "GBR", "bt709", "undef", "", "fcc", "bt470bg", "smpte170m", "smpte240m", "YCgCo", 0 };
+static const char * const x264_open_gop_names[] = { "none", "normal", "bluray", 0 };
 static const char * const x264_nal_hrd_names[] = { "none", "vbr", "cbr", "fakevbr", "fakecbr", 0 };
 
 /* Colorspace type */
@@ -180,12 +189,15 @@ static const char * const x264_nal_hrd_names[] = { "none", "vbr", "cbr", "fakevb
 #define X264_CSP_I420           0x0001  /* yuv 4:2:0 planar */
 #define X264_CSP_YV12           0x0002  /* yvu 4:2:0 planar */
 #define X264_CSP_NV12           0x0003  /* yuv 4:2:0, with one y plane and one packed u+v */
-#define X264_CSP_I444           0x0004  /* yuv 4:4:4 planar */
-#define X264_CSP_YV24           0x0005  /* yvu 4:4:4 planar */
-#define X264_CSP_BGR            0x0006  /* packed bgr 24bits   */
-#define X264_CSP_BGRA           0x0007  /* packed bgr 32bits   */
-#define X264_CSP_RGB            0x0008  /* packed rgb 24bits   */
-#define X264_CSP_MAX            0x0009  /* end of list */
+#define X264_CSP_I422           0x0004  /* yuv 4:2:2 planar */
+#define X264_CSP_YV16           0x0005  /* yvu 4:2:2 planar */
+#define X264_CSP_NV16           0x0006  /* yuv 4:2:2, with one y plane and one packed u+v */
+#define X264_CSP_I444           0x0007  /* yuv 4:4:4 planar */
+#define X264_CSP_YV24           0x0008  /* yvu 4:4:4 planar */
+#define X264_CSP_BGR            0x0009  /* packed bgr 24bits   */
+#define X264_CSP_BGRA           0x000a  /* packed bgr 32bits   */
+#define X264_CSP_RGB            0x000b  /* packed rgb 24bits   */
+#define X264_CSP_MAX            0x000c  /* end of list */
 #define X264_CSP_VFLIP          0x1000  /* the csp is vertically flipped */
 #define X264_CSP_HIGH_DEPTH     0x2000  /* the csp has a depth of 16 bits per pixel component */
 
@@ -237,12 +249,13 @@ typedef struct x264_param_t
     int         i_threads;       /* encode multiple frames in parallel */
     int         b_sliced_threads;  /* Whether to use slice-based threading. */
     int         b_deterministic; /* whether to allow non-deterministic optimizations when threaded */
+    int         b_cpu_independent; /* force canonical behavior rather than cpu-dependent optimal algorithms */
     int         i_sync_lookahead; /* threaded lookahead buffer */
 
     /* Video Properties */
     int         i_width;
     int         i_height;
-    int         i_csp;  /* CSP of encoded bitstream, only i420 supported */
+    int         i_csp;         /* CSP of encoded bitstream */
     int         i_level_idc;
     int         i_frame_total; /* number of frames to encode if known, else 0 */
     int         i_profile; /* Output Only */
@@ -592,7 +605,7 @@ void    x264_param_apply_fastfirstpass( x264_param_t * );
 /* x264_param_apply_profile:
  *      Applies the restrictions of the given profile.
  *      Currently available profiles are, from most to least restrictive: */
-static const char * const x264_profile_names[] = { "baseline", "main", "high", "high10", 0 };
+static const char * const x264_profile_names[] = { "baseline", "main", "high", "high10", "high422", "high444", 0 };
 
 /*      (can be NULL, in which case the function will do nothing)
  *
@@ -617,6 +630,13 @@ int     x264_param_apply_profile( x264_param_t *, const char *profile );
  *      colorspace depth as well. */
 extern const int x264_bit_depth;
 
+/* x264_chroma_format:
+ *      Specifies the chroma formats that x264 supports encoding. When this
+ *      value is non-zero, then it represents a X264_CSP_* that is the only
+ *      chroma format that x264 supports encoding. If the value is 0 then
+ *      there are no restrictions. */
+extern const int x264_chroma_format;
+
 enum pic_struct_e
 {
     PIC_STRUCT_AUTO              = 0, // automatically decide (default)
@@ -632,11 +652,11 @@ enum pic_struct_e
 
 typedef struct
 {
-    double cpb_initial_arrival_time;
-    double cpb_final_arrival_time;
-    double cpb_removal_time;
-
-    double dpb_output_time;
+    int64_t cpb_initial_arrival_time;
+    int64_t safe_cpb_initial_arrival_time;
+    int64_t cpb_final_arrival_time;
+    int64_t cpb_removal_time;
+    int64_t dpb_output_time;
 } x264_hrd_t;
 
 /* Arbitrary user SEI:
@@ -725,12 +745,8 @@ typedef struct
     x264_hrd_t hrd_timing;
     /* In: arbitrary user SEI (e.g subtitles, AFDs) */
     x264_sei_t extra_sei;
-    /* private user data. libx264 doesn't touch this,
-       not even copy it from input to output frames. */
+    /* private user data. copied from input to output frames. */
     void *opaque;
-    /* private user data, libx264 doesn't touch this,
-       copied from input to output frames. */
-    void *passthrough_opaque;
 } x264_picture_t;
 
 /* x264_picture_init:

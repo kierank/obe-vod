@@ -1,7 +1,7 @@
 /*****************************************************************************
  * set: header writing
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
@@ -99,14 +99,19 @@ void x264_sei_write( bs_t *s, uint8_t *payload, int payload_size, int payload_ty
 
 void x264_sps_init( x264_sps_t *sps, int i_id, x264_param_t *param )
 {
+    int csp = param->i_csp & X264_CSP_MASK;
+
     sps->i_id = i_id;
     sps->i_mb_width = ( param->i_width + 15 ) / 16;
     sps->i_mb_height= ( param->i_height + 15 ) / 16;
-    sps->i_chroma_format_idc = param->i_csp >= X264_CSP_I444 ? 3 : 1;
+    sps->i_chroma_format_idc = csp >= X264_CSP_I444 ? CHROMA_444 :
+                               csp >= X264_CSP_I422 ? CHROMA_422 : CHROMA_420;
 
     sps->b_qpprime_y_zero_transform_bypass = param->rc.i_rc_method == X264_RC_CQP && param->rc.i_qp_constant == 0;
-    if( sps->b_qpprime_y_zero_transform_bypass || sps->i_chroma_format_idc == 3 )
+    if( sps->b_qpprime_y_zero_transform_bypass || sps->i_chroma_format_idc == CHROMA_444 )
         sps->i_profile_idc  = PROFILE_HIGH444_PREDICTIVE;
+    else if( sps->i_chroma_format_idc == CHROMA_422 )
+        sps->i_profile_idc  = PROFILE_HIGH422;
     else if( BIT_DEPTH > 8 )
         sps->i_profile_idc  = PROFILE_HIGH10;
     else if( param->analyse.b_transform_8x8 || param->i_cqm_preset != X264_CQM_FLAT )
@@ -130,11 +135,8 @@ void x264_sps_init( x264_sps_t *sps, int i_id, x264_param_t *param )
         sps->b_constraint_set3 = 1; /* level 1b with Baseline, Main or Extended profile is signalled via constraint_set3 */
         sps->i_level_idc      = 11;
     }
-    /* High 10 Intra profile */
-    if( param->i_keyint_max == 1 && sps->i_profile_idc == PROFILE_HIGH10 )
-        sps->b_constraint_set3 = 1;
-    /* High 4:4:4 Intra profile */
-    if( param->i_keyint_max == 1 && sps->i_profile_idc == PROFILE_HIGH444_PREDICTIVE )
+    /* Intra profiles */
+    if( param->i_keyint_max == 1 && sps->i_profile_idc > PROFILE_HIGH )
         sps->b_constraint_set3 = 1;
 
     sps->vui.i_num_reorder_frames = param->i_bframe_pyramid ? 2 : param->i_bframe ? 1 : 0;
@@ -203,13 +205,13 @@ void x264_sps_init( x264_sps_t *sps, int i_id, x264_param_t *param )
     sps->vui.b_signal_type_present = 0;
     sps->vui.i_vidformat = ( param->vui.i_vidformat >= 0 && param->vui.i_vidformat <= 5 ? param->vui.i_vidformat : 5 );
     sps->vui.b_fullrange = ( param->vui.b_fullrange >= 0 && param->vui.b_fullrange <= 1 ? param->vui.b_fullrange :
-                           ( param->i_csp >= X264_CSP_BGR ? 1 : 0 ) );
+                           ( csp >= X264_CSP_BGR ? 1 : 0 ) );
     sps->vui.b_color_description_present = 0;
 
     sps->vui.i_colorprim = ( param->vui.i_colorprim >= 0 && param->vui.i_colorprim <=  8 ? param->vui.i_colorprim : 2 );
     sps->vui.i_transfer  = ( param->vui.i_transfer  >= 0 && param->vui.i_transfer  <= 10 ? param->vui.i_transfer  : 2 );
     sps->vui.i_colmatrix = ( param->vui.i_colmatrix >= 0 && param->vui.i_colmatrix <=  8 ? param->vui.i_colmatrix :
-                           ( param->i_csp >= X264_CSP_BGR ? 0 : 2 ) );
+                           ( csp >= X264_CSP_BGR ? 0 : 2 ) );
     if( sps->vui.i_colorprim != 2 ||
         sps->vui.i_transfer  != 2 ||
         sps->vui.i_colmatrix != 2 )
@@ -276,7 +278,7 @@ void x264_sps_write( bs_t *s, x264_sps_t *sps )
     if( sps->i_profile_idc >= PROFILE_HIGH )
     {
         bs_write_ue( s, sps->i_chroma_format_idc );
-        if( sps->i_chroma_format_idc == 3 )
+        if( sps->i_chroma_format_idc == CHROMA_444 )
             bs_write1( s, 0 ); // separate_colour_plane_flag
         bs_write_ue( s, BIT_DEPTH-8 ); // bit_depth_luma_minus8
         bs_write_ue( s, BIT_DEPTH-8 ); // bit_depth_chroma_minus8
@@ -300,11 +302,12 @@ void x264_sps_write( bs_t *s, x264_sps_t *sps )
     bs_write1( s, sps->b_crop );
     if( sps->b_crop )
     {
-        int cropshift = sps->i_chroma_format_idc != 3;
-        bs_write_ue( s, sps->crop.i_left   >> cropshift );
-        bs_write_ue( s, sps->crop.i_right  >> cropshift );
-        bs_write_ue( s, sps->crop.i_top    >> cropshift );
-        bs_write_ue( s, sps->crop.i_bottom >> cropshift );
+        int h_shift = sps->i_chroma_format_idc == CHROMA_420 || sps->i_chroma_format_idc == CHROMA_422;
+        int v_shift = sps->i_chroma_format_idc == CHROMA_420;
+        bs_write_ue( s, sps->crop.i_left   >> h_shift );
+        bs_write_ue( s, sps->crop.i_right  >> h_shift );
+        bs_write_ue( s, sps->crop.i_top    >> v_shift );
+        bs_write_ue( s, sps->crop.i_bottom >> v_shift );
     }
 
     bs_write1( s, sps->b_vui );
@@ -418,7 +421,7 @@ void x264_pps_init( x264_pps_t *pps, int i_id, x264_param_t *param, x264_sps_t *
     pps->i_sps_id = sps->i_id;
     pps->b_cabac = param->b_cabac;
 
-    pps->b_pic_order = param->b_interlaced;
+    pps->b_pic_order = param->b_interlaced && !param->b_tff;
     pps->i_num_slice_groups = 1;
 
     pps->i_num_ref_idx_l0_default_active = param->i_frame_reference;
@@ -512,7 +515,7 @@ void x264_pps_write( bs_t *s, x264_sps_t *sps, x264_pps_t *pps )
             bs_write1( s, 0 ); // Cr = Cb
             if( pps->b_transform_8x8_mode )
             {
-                if( sps->i_chroma_format_idc == 3 )
+                if( sps->i_chroma_format_idc == CHROMA_444 )
                 {
                     scaling_list_write( s, pps, CQM_8IY+4 );
                     scaling_list_write( s, pps, CQM_8IC+4 );
@@ -572,7 +575,7 @@ int x264_sei_version_write( x264_t *h, bs_t *s )
 
     memcpy( payload, uuid, 16 );
     sprintf( payload+16, "x264 - core %d%s - H.264/MPEG-4 AVC codec - "
-             "Copy%s 2003-2011 - http://www.videolan.org/x264.html - options: %s",
+             "Copy%s 2003-2012 - http://www.videolan.org/x264.html - options: %s",
              X264_BUILD, X264_VERSION, HAVE_GPL?"left":"right", opts );
     length = strlen(payload)+1;
 
@@ -641,6 +644,7 @@ void x264_sei_pic_timing_write( x264_t *h, bs_t *s )
 
 void x264_sei_frame_packing_write( x264_t *h, bs_t *s )
 {
+    int quincunx_sampling_flag = h->param.i_frame_packing == 0;
     bs_t q;
     uint8_t tmp_buf[100];
     bs_init( &q, tmp_buf, 100 );
@@ -650,7 +654,7 @@ void x264_sei_frame_packing_write( x264_t *h, bs_t *s )
     bs_write_ue( &q, 0 );                         // frame_packing_arrangement_id
     bs_write1( &q, 0 );                           // frame_packing_arrangement_cancel_flag
     bs_write ( &q, 7, h->param.i_frame_packing ); // frame_packing_arrangement_type
-    bs_write1( &q, 0 );                           // quincunx_sampling_flag
+    bs_write1( &q, quincunx_sampling_flag );      // quincunx_sampling_flag
 
     // 0: views are unrelated, 1: left view is on the left, 2: left view is on the right
     bs_write ( &q, 6, 1 );                        // content_interpretation_type
@@ -661,7 +665,7 @@ void x264_sei_frame_packing_write( x264_t *h, bs_t *s )
     bs_write1( &q, h->param.i_frame_packing == 5 && !(h->fenc->i_frame&1) ); // current_frame_is_frame0_flag
     bs_write1( &q, 0 );                           // frame0_self_contained_flag
     bs_write1( &q, 0 );                           // frame1_self_contained_flag
-    if ( /* quincunx_sampling_flag == 0 && */ h->param.i_frame_packing != 5 )
+    if ( quincunx_sampling_flag == 0 && h->param.i_frame_packing != 5 )
     {
         bs_write( &q, 4, 0 );                     // frame0_grid_position_x
         bs_write( &q, 4, 0 );                     // frame0_grid_position_y
@@ -754,7 +758,7 @@ int x264_validate_levels( x264_t *h, int verbose )
     int ret = 0;
     int mbs = h->sps->i_mb_width * h->sps->i_mb_height;
     int dpb = mbs * 384 * h->sps->vui.i_max_dec_frame_buffering;
-    int cbp_factor = h->sps->i_profile_idc==PROFILE_HIGH444_PREDICTIVE ? 16 :
+    int cbp_factor = h->sps->i_profile_idc>=PROFILE_HIGH422 ? 16 :
                      h->sps->i_profile_idc==PROFILE_HIGH10 ? 12 :
                      h->sps->i_profile_idc==PROFILE_HIGH ? 5 : 4;
 

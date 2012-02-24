@@ -189,23 +189,6 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     else
         i_profile_idc = AVC_BASELINE;
 
-    #define BR_SHIFT  6
-    #define CPB_SHIFT 4
-
-    int bitrate = 1000*p_param->rc.i_vbv_max_bitrate;
-    int bufsize = 1000*p_param->rc.i_vbv_buffer_size;
-
-    // normalize HRD size and rate to the value / scale notation
-    int hrd_bit_rate_scale = x264_clip3( x264_ctz( bitrate ) - BR_SHIFT, 0, 15 );
-    int hrd_bit_rate_value = bitrate >> ( hrd_bit_rate_scale + BR_SHIFT );
-    int hrd_bit_rate = hrd_bit_rate_value << ( hrd_bit_rate_scale + BR_SHIFT );
-    int cpb_size_scale = x264_clip3( x264_ctz( bufsize ) - CPB_SHIFT, 0, 15 );
-    int cpb_size_value = bufsize >> ( cpb_size_scale + CPB_SHIFT );
-    int cpb_size = cpb_size_value << ( cpb_size_scale + CPB_SHIFT );
-
-    #undef CPB_SHIFT
-    #undef BR_SHIFT
-
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
         extra_stream = &p_ts->opt.extra_streams[i];
@@ -280,7 +263,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     if( ts_setup_transport_stream( p_ts->w, &params ) < 0 )
         return -1;
 
-    if( ts_setup_mpegvideo_stream( p_ts->w, streams[0].pid, p_param->i_level_idc, i_profile_idc, hrd_bit_rate, cpb_size, 0 ) < 0 )
+    if( ts_setup_mpegvideo_stream( p_ts->w, streams[0].pid, p_param->i_level_idc, i_profile_idc, 0, 0, 0 ) < 0 )
         return -1;
 
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
@@ -309,7 +292,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
 static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_t *p_picture, int i_ref_idc )
 {
     ts_hnd_t *p_ts = handle;
-    int64_t video_pts = (int64_t)((p_picture->hrd_timing.dpb_output_time * 90000LL) + 0.5);
+    int64_t video_pts = p_picture->hrd_timing.dpb_output_time / 300;
     uint8_t *output = NULL;
     int len = 0;
     int ret, frame_size;
@@ -440,8 +423,11 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     frame[0].data = p_nalu;
     frame[0].size = i_size;
     frame[0].pid = p_ts->streams[0].pid;
-    frame[0].dts = (int64_t)((p_picture->hrd_timing.cpb_removal_time * 90000LL) + 0.5);
+    frame[0].dts = p_picture->hrd_timing.cpb_removal_time / 300;
     frame[0].pts = video_pts;
+    frame[0].cpb_initial_arrival_time = p_picture->hrd_timing.cpb_initial_arrival_time;
+    frame[0].cpb_final_arrival_time = p_picture->hrd_timing.cpb_final_arrival_time;
+
     frame[0].random_access = p_picture->b_keyframe;
     frame[0].priority = IS_X264_TYPE_I( p_picture->i_type );
 

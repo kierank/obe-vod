@@ -1,7 +1,7 @@
 /*****************************************************************************
  * macroblock.h: macroblock common functions
  *****************************************************************************
- * Copyright (C) 2005-2011 x264 project
+ * Copyright (C) 2005-2012 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -308,7 +308,6 @@ void x264_macroblock_thread_free( x264_t *h, int b_lookahead );
 
 void x264_macroblock_slice_init( x264_t *h );
 void x264_macroblock_thread_init( x264_t *h );
-void x264_macroblock_cache_load( x264_t *h, int mb_x, int mb_y, int b_interlaced );
 void x264_macroblock_cache_load_progressive( x264_t *h, int mb_x, int mb_y );
 void x264_macroblock_cache_load_interlaced( x264_t *h, int mb_x, int mb_y );
 void x264_macroblock_deblock_strength( x264_t *h );
@@ -349,7 +348,7 @@ void x264_mb_predict_mv_ref16x16( x264_t *h, int i_list, int i_ref, int16_t mvc[
 void x264_mb_mc( x264_t *h );
 void x264_mb_mc_8x8( x264_t *h, int i8 );
 
-static ALWAYS_INLINE uint32_t pack16to32( int a, int b )
+static ALWAYS_INLINE uint32_t pack16to32( uint32_t a, uint32_t b )
 {
 #if WORDS_BIGENDIAN
    return b + (a<<16);
@@ -357,7 +356,7 @@ static ALWAYS_INLINE uint32_t pack16to32( int a, int b )
    return a + (b<<16);
 #endif
 }
-static ALWAYS_INLINE uint32_t pack8to16( int a, int b )
+static ALWAYS_INLINE uint32_t pack8to16( uint32_t a, uint32_t b )
 {
 #if WORDS_BIGENDIAN
    return b + (a<<8);
@@ -365,7 +364,7 @@ static ALWAYS_INLINE uint32_t pack8to16( int a, int b )
    return a + (b<<8);
 #endif
 }
-static ALWAYS_INLINE uint32_t pack8to32( int a, int b, int c, int d )
+static ALWAYS_INLINE uint32_t pack8to32( uint32_t a, uint32_t b, uint32_t c, uint32_t d )
 {
 #if WORDS_BIGENDIAN
    return d + (c<<8) + (b<<16) + (a<<24);
@@ -398,15 +397,6 @@ static ALWAYS_INLINE uint64_t pack32to64( uint32_t a, uint32_t b )
 #   define pack_pixel_2to4 pack16to32
 #endif
 
-#define array_non_zero(a) array_non_zero_int(a, sizeof(a)/sizeof(dctcoef))
-#define array_non_zero_int array_non_zero_int
-static ALWAYS_INLINE int array_non_zero_int( dctcoef *v, int i_count )
-{
-    for( int i = 0; i < i_count; i++ )
-        if( v[i] )
-            return 1;
-    return 0;
-}
 static ALWAYS_INLINE int x264_mb_predict_intra4x4_mode( x264_t *h, int idx )
 {
     const int ma = h->mb.cache.intra4x4_pred_mode[x264_scan8[idx] - 1];

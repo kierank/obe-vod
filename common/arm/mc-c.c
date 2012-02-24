@@ -1,7 +1,7 @@
 /*****************************************************************************
  * mc-c.c: arm motion compensation
  *****************************************************************************
- * Copyright (C) 2009-2011 x264 project
+ * Copyright (C) 2009-2012 x264 project
  *
  * Authors: David Conrad <lessen42@gmail.com>
  *
@@ -210,7 +210,8 @@ void x264_mc_init_arm( int cpu, x264_mc_functions_t *pf )
         return;
 
 #if !HIGH_BIT_DEPTH
-    pf->prefetch_fenc = x264_prefetch_fenc_arm;
+    pf->prefetch_fenc_420 = x264_prefetch_fenc_arm;
+    pf->prefetch_fenc_422 = x264_prefetch_fenc_arm; /* FIXME */
     pf->prefetch_ref  = x264_prefetch_ref_arm;
 #endif // !HIGH_BIT_DEPTH
 

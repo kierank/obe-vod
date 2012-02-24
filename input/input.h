@@ -1,7 +1,7 @@
 /*****************************************************************************
  * input.h: file input
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
@@ -42,6 +42,8 @@ typedef struct
     int seek;
     int progress;
     int output_csp; /* convert to this csp, if applicable */
+    int output_range; /* user desired output range */
+    int input_range; /* user override input range */
 } cli_input_opt_t;
 
 /* properties of the source given by the demuxer */
@@ -50,6 +52,8 @@ typedef struct
     int csp;         /* colorspace of the input */
     uint32_t fps_num;
     uint32_t fps_den;
+    int fullrange;   /* has 2^bit_depth-1 instead of 219*2^(bit_depth-8) ranges (YUV only) */
+    int width;
     int height;
     int interlaced;
     int num_frames;
@@ -60,7 +64,6 @@ typedef struct
     uint32_t timebase_num;
     uint32_t timebase_den;
     int vfr;
-    int width;
 } video_info_t;
 
 /* image data type used by x264cli */
@@ -102,8 +105,7 @@ extern const cli_input_t ffms_input;
 extern cli_input_t cli_input;
 
 /* extended colorspace list that isn't supported by libx264 but by the cli */
-#define X264_CSP_I422           X264_CSP_MAX     /* yuv 4:2:2 planar    */
-#define X264_CSP_CLI_MAX       (X264_CSP_MAX+1)  /* end of list         */
+#define X264_CSP_CLI_MAX        X264_CSP_MAX     /* end of list         */
 #define X264_CSP_OTHER          0x4000           /* non x264 colorspace */
 
 typedef struct

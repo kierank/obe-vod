@@ -1,7 +1,7 @@
 /*****************************************************************************
  * common.c: misc common functions
  *****************************************************************************
- * Copyright (C) 2003-2011 x264 project
+ * Copyright (C) 2003-2012 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -35,6 +35,8 @@
 
 const int x264_bit_depth = BIT_DEPTH;
 
+const int x264_chroma_format = X264_CHROMA_FORMAT;
+
 static void x264_log_default( void *, int, const char *, va_list );
 
 /****************************************************************************
@@ -52,7 +54,7 @@ void x264_param_default( x264_param_t *param )
     param->i_sync_lookahead = X264_SYNC_LOOKAHEAD_AUTO;
 
     /* Video properties */
-    param->i_csp           = X264_CSP_I420;
+    param->i_csp           = X264_CHROMA_FORMAT ? X264_CHROMA_FORMAT : X264_CSP_I420;
     param->i_width         = 0;
     param->i_height        = 0;
     param->vui.i_sar_width = 0;
@@ -119,7 +121,7 @@ void x264_param_default( x264_param_t *param )
 
     // speedcontrol
     param->sc.f_speed = 0;
-    param->sc.i_buffer_size = 30;
+    param->sc.i_buffer_size = 12;
     param->sc.f_buffer_init = 0.75;
 
     /* Log */
@@ -431,21 +433,57 @@ void x264_param_apply_fastfirstpass( x264_param_t *param )
     }
 }
 
+static int profile_string_to_int( const char *str )
+{
+    if( !strcasecmp( str, "baseline" ) )
+        return PROFILE_BASELINE;
+    if( !strcasecmp( str, "main" ) )
+        return PROFILE_MAIN;
+    if( !strcasecmp( str, "high" ) )
+        return PROFILE_HIGH;
+    if( !strcasecmp( str, "high10" ) )
+        return PROFILE_HIGH10;
+    if( !strcasecmp( str, "high422" ) )
+        return PROFILE_HIGH422;
+    if( !strcasecmp( str, "high444" ) )
+        return PROFILE_HIGH444_PREDICTIVE;
+    return -1;
+}
+
 int x264_param_apply_profile( x264_param_t *param, const char *profile )
 {
     if( !profile )
         return 0;
 
-#if BIT_DEPTH > 8
-    if( !strcasecmp( profile, "baseline" ) || !strcasecmp( profile, "main" ) ||
-        !strcasecmp( profile, "high" ) )
+    int p = profile_string_to_int( profile );
+    if( p < 0 )
     {
-        x264_log( NULL, X264_LOG_ERROR, "%s profile doesn't support a bit depth of %d.\n", profile, BIT_DEPTH );
+        x264_log( NULL, X264_LOG_ERROR, "invalid profile: %s\n", profile );
         return -1;
     }
-#endif
+    if( p < PROFILE_HIGH444_PREDICTIVE && ((param->rc.i_rc_method == X264_RC_CQP && param->rc.i_qp_constant <= 0) ||
+        (param->rc.i_rc_method == X264_RC_CRF && (int)(param->rc.f_rf_constant + QP_BD_OFFSET) <= 0)) )
+    {
+        x264_log( NULL, X264_LOG_ERROR, "%s profile doesn't support lossless\n", profile );
+        return -1;
+    }
+    if( p < PROFILE_HIGH444_PREDICTIVE && (param->i_csp & X264_CSP_MASK) >= X264_CSP_I444 )
+    {
+        x264_log( NULL, X264_LOG_ERROR, "%s profile doesn't support 4:4:4\n", profile );
+        return -1;
+    }
+    if( p < PROFILE_HIGH422 && (param->i_csp & X264_CSP_MASK) >= X264_CSP_I422 )
+    {
+        x264_log( NULL, X264_LOG_ERROR, "%s profile doesn't support 4:2:2\n", profile );
+        return -1;
+    }
+    if( p < PROFILE_HIGH10 && BIT_DEPTH > 8 )
+    {
+        x264_log( NULL, X264_LOG_ERROR, "%s profile doesn't support a bit depth of %d\n", profile, BIT_DEPTH );
+        return -1;
+    }
 
-    if( !strcasecmp( profile, "baseline" ) )
+    if( p == PROFILE_BASELINE )
     {
         param->analyse.b_transform_8x8 = 0;
         param->b_cabac = 0;
@@ -464,26 +502,11 @@ int x264_param_apply_profile( x264_param_t *param, const char *profile )
             return -1;
         }
     }
-    else if( !strcasecmp( profile, "main" ) )
+    else if( p == PROFILE_MAIN )
     {
         param->analyse.b_transform_8x8 = 0;
         param->i_cqm_preset = X264_CQM_FLAT;
         param->psz_cqm_file = NULL;
-    }
-    else if( !strcasecmp( profile, "high" ) || !strcasecmp( profile, "high10" ) )
-    {
-        /* Default */
-    }
-    else
-    {
-        x264_log( NULL, X264_LOG_ERROR, "invalid profile: %s\n", profile );
-        return -1;
-    }
-    if( (param->rc.i_rc_method == X264_RC_CQP && param->rc.i_qp_constant <= 0) ||
-        (param->rc.i_rc_method == X264_RC_CRF && (int)(param->rc.f_rf_constant + QP_BD_OFFSET) <= 0) )
-    {
-        x264_log( NULL, X264_LOG_ERROR, "%s profile doesn't support lossless\n", profile );
-        return -1;
     }
     return 0;
 }
@@ -601,6 +624,10 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
                     b_error = 1;
             }
             free( buf );
+            if( p->cpu & X264_CPU_SSSE3 )
+                p->cpu |= X264_CPU_SSE2_IS_FAST;
+            if( p->cpu & X264_CPU_SSE4 )
+                p->cpu |= X264_CPU_SHUFFLE_IS_FAST;
         }
     }
     OPT("threads")
@@ -621,6 +648,8 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
     }
     OPT2("deterministic", "n-deterministic")
         p->b_deterministic = atobool(value);
+    OPT("cpu-independent")
+        p->b_cpu_independent = atobool(value);
     OPT2("level", "level-idc")
     {
         if( !strcmp(value, "1b") )
@@ -1082,6 +1111,9 @@ int x264_picture_alloc( x264_picture_t *pic, int i_csp, int i_width, int i_heigh
         [X264_CSP_I420] = { 3, { 256*1, 256/2, 256/2 }, { 256*1, 256/2, 256/2 } },
         [X264_CSP_YV12] = { 3, { 256*1, 256/2, 256/2 }, { 256*1, 256/2, 256/2 } },
         [X264_CSP_NV12] = { 2, { 256*1, 256*1 },        { 256*1, 256/2 },       },
+        [X264_CSP_I422] = { 3, { 256*1, 256/2, 256/2 }, { 256*1, 256*1, 256*1 } },
+        [X264_CSP_YV16] = { 3, { 256*1, 256/2, 256/2 }, { 256*1, 256*1, 256*1 } },
+        [X264_CSP_NV16] = { 2, { 256*1, 256*1 },        { 256*1, 256*1 },       },
         [X264_CSP_I444] = { 3, { 256*1, 256*1, 256*1 }, { 256*1, 256*1, 256*1 } },
         [X264_CSP_YV24] = { 3, { 256*1, 256*1, 256*1 }, { 256*1, 256*1, 256*1 } },
         [X264_CSP_BGR]  = { 1, { 256*3 },               { 256*1 },              },
