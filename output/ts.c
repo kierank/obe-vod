@@ -40,6 +40,7 @@ typedef struct ts_hnd_t
     int write_pic_struct;
     int open_gop;
     int first;
+    int64_t first_video_pts;
 } ts_hnd_t;
 
 static int open_file( char *psz_filename, hnd_t *p_handle, cli_output_opt_t *opt )
@@ -292,6 +293,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
 static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_t *p_picture, int i_ref_idc )
 {
     ts_hnd_t *p_ts = handle;
+    int64_t video_dts = p_picture->hrd_timing.cpb_removal_time / 300;
     int64_t video_pts = p_picture->hrd_timing.dpb_output_time / 300;
     uint8_t *output = NULL;
     int len = 0;
@@ -300,30 +302,21 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     int frame_idx = 1;
     int64_t *pcr_list;
 
+    if( !p_ts->first )
+        p_ts->first_video_pts = video_pts;
+
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
-        int64_t audio_pts;
+        int64_t rescaled_audio_pts = p_ts->opt.extra_streams[i].next_audio_pts + p_ts->first_video_pts;
         p_ts->opt.extra_streams[i].num_audio_frames = 0;
 
-        if( !p_ts->first )
+        while( rescaled_audio_pts <= video_dts )
         {
-            audio_pts = p_ts->opt.extra_streams[i].next_audio_pts = video_pts;
             p_ts->opt.extra_streams[i].num_audio_frames++;
-            audio_pts += p_ts->opt.extra_streams[i].increment;
-        }
-        else
-        {
-            audio_pts = p_ts->opt.extra_streams[i].next_audio_pts;
-            while( audio_pts < video_pts )
-            {
-                p_ts->opt.extra_streams[i].num_audio_frames++;
-                audio_pts += p_ts->opt.extra_streams[i].increment;
-            }
+            rescaled_audio_pts += p_ts->opt.extra_streams[i].increment;
         }
         total_audio_frames += p_ts->opt.extra_streams[i].num_audio_frames;
     }
-
-    p_ts->first = 1;
 
     ts_frame_t *frame = calloc( 1, (total_audio_frames + 1) * sizeof(ts_frame_t) );
     if( !frame )
@@ -412,8 +405,9 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
             {
                 frame[frame_idx].size = frame_size;
                 frame[frame_idx].pid = cur_stream->pid;
-                frame[frame_idx].dts = p_ts->opt.extra_streams[i].next_audio_pts;
-                frame[frame_idx].pts = p_ts->opt.extra_streams[i].next_audio_pts;
+                frame[frame_idx].dts = p_ts->opt.extra_streams[i].next_audio_pts + p_ts->first_video_pts;
+                frame[frame_idx].pts = p_ts->opt.extra_streams[i].next_audio_pts + p_ts->first_video_pts;
+                frame[frame_idx].random_access = 1;
                 p_ts->opt.extra_streams[i].next_audio_pts += p_ts->opt.extra_streams[i].increment;
                 frame_idx++;
             }
@@ -423,11 +417,10 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     frame[0].data = p_nalu;
     frame[0].size = i_size;
     frame[0].pid = p_ts->streams[0].pid;
-    frame[0].dts = p_picture->hrd_timing.cpb_removal_time / 300;
+    frame[0].dts = video_dts;
     frame[0].pts = video_pts;
     frame[0].cpb_initial_arrival_time = p_picture->hrd_timing.cpb_initial_arrival_time;
     frame[0].cpb_final_arrival_time = p_picture->hrd_timing.cpb_final_arrival_time;
-
     frame[0].random_access = p_picture->b_keyframe;
     frame[0].priority = IS_X264_TYPE_I( p_picture->i_type );
 
@@ -461,6 +454,8 @@ static int write_frame( hnd_t handle, uint8_t *p_nalu, int i_size, x264_picture_
     }
 
     free( frame );
+
+    p_ts->first = 1;
 
     return i_size;
 
