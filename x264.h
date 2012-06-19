@@ -41,7 +41,18 @@
 
 #include "x264_config.h"
 
-#define X264_BUILD 120
+#define X264_BUILD 125
+
+/* Application developers planning to link against a shared library version of
+ * libx264 from a Microsoft Visual Studio or similar development environment
+ * will need to define X264_API_IMPORTS before including this header.
+ * This clause does not apply to MinGW, similar development environments, or non
+ * Windows platforms. */
+#ifdef X264_API_IMPORTS
+#define X264_API __declspec(dllimport)
+#else
+#define X264_API
+#endif
 
 /* x264_t:
  *      opaque handler for encoder */
@@ -246,7 +257,8 @@ typedef struct x264_param_t
 {
     /* CPU flags */
     unsigned int cpu;
-    int         i_threads;       /* encode multiple frames in parallel */
+    int         i_threads;           /* encode multiple frames in parallel */
+    int         i_lookahead_threads; /* multiple threads for lookahead analysis */
     int         b_sliced_threads;  /* Whether to use slice-based threading. */
     int         b_deterministic; /* whether to allow non-deterministic optimizations when threaded */
     int         b_cpu_independent; /* force canonical behavior rather than cpu-dependent optimal algorithms */
@@ -327,6 +339,7 @@ typedef struct x264_param_t
     void        *p_log_private;
     int         i_log_level;
     int         b_visualize;
+    int         b_full_recon;   /* fully reconstruct frames, even when not necessary for encoding.  Implied by psz_dump_yuv */
     char        *psz_dump_yuv;  /* filename for reconstructed frames */
 
     /* Encoder analyser parameters */
@@ -355,6 +368,8 @@ typedef struct x264_param_t
         float        f_psy_rd; /* Psy RD strength */
         float        f_psy_trellis; /* Psy trellis strength */
         int          b_psy; /* Toggle all psy optimizations */
+
+        int          b_mb_info; /* Use input mb_info data in x264_picture_t */
 
         /* the deadzone size that will be used in luma quantization */
         int          i_luma_deadzone[2]; /* {inter, intra} */
@@ -531,7 +546,7 @@ typedef struct
 } x264_level_t;
 
 /* all of the levels defined in the standard, terminated by .level_idc=0 */
-extern const x264_level_t x264_levels[];
+X264_API extern const x264_level_t x264_levels[];
 
 /****************************************************************************
  * Basic parameter handling functions
@@ -628,14 +643,14 @@ int     x264_param_apply_profile( x264_param_t *, const char *profile );
  *      (16-x264_bit_depth) bits to be zero.
  *      Note: The flag X264_CSP_HIGH_DEPTH must be used to specify the
  *      colorspace depth as well. */
-extern const int x264_bit_depth;
+X264_API extern const int x264_bit_depth;
 
 /* x264_chroma_format:
  *      Specifies the chroma formats that x264 supports encoding. When this
  *      value is non-zero, then it represents a X264_CSP_* that is the only
  *      chroma format that x264 supports encoding. If the value is 0 then
  *      there are no restrictions. */
-extern const int x264_chroma_format;
+X264_API extern const int x264_chroma_format;
 
 enum pic_struct_e
 {
@@ -693,18 +708,42 @@ typedef struct
 
 typedef struct
 {
+    /* All arrays of data here are ordered as follows:
+     * each array contains one offset per macroblock, in raster scan order.  In interlaced
+     * mode, top-field MBs and bottom-field MBs are interleaved at the row level.
+     * Macroblocks are 16x16 blocks of pixels (with respect to the luma plane).  For the
+     * purposes of calculating the number of macroblocks, width and height are rounded up to
+     * the nearest 16.  If in interlaced mode, height is rounded up to the nearest 32 instead. */
+
     /* In: an array of quantizer offsets to be applied to this image during encoding.
      *     These are added on top of the decisions made by x264.
      *     Offsets can be fractional; they are added before QPs are rounded to integer.
      *     Adaptive quantization must be enabled to use this feature.  Behavior if quant
-     *     offsets differ between encoding passes is undefined.
-     *
-     *     Array contains one offset per macroblock, in raster scan order.  In interlaced
-     *     mode, top-field MBs and bottom-field MBs are interleaved at the row level. */
+     *     offsets differ between encoding passes is undefined. */
     float *quant_offsets;
     /* In: optional callback to free quant_offsets when used.
      *     Useful if one wants to use a different quant_offset array for each frame. */
     void (*quant_offsets_free)( void* );
+
+    /* In: optional array of flags for each macroblock.
+     *     Allows specifying additional information for the encoder such as which macroblocks
+     *     remain unchanged.  Usable flags are listed below.
+     *     x264_param_t.analyse.b_mb_info must be set to use this, since x264 needs to track
+     *     extra data internally to make full use of this information. */
+    uint8_t *mb_info;
+    /* In: optional callback to free mb_info when used. */
+    void (*mb_info_free)( void* );
+
+    /* The macroblock is constant and remains unchanged from the previous frame. */
+    #define X264_MBINFO_CONSTANT   (1<<0)
+    /* More flags may be added in the future. */
+
+    /* Out: SSIM of the the frame luma (if x264_param_t.b_ssim is set) */
+    double f_ssim;
+    /* Out: Average PSNR of the frame (if x264_param_t.b_psnr is set) */
+    double f_psnr_avg;
+    /* Out: PSNR of Y, U, and V (if x264_param_t.b_psnr is set) */
+    double f_psnr[3];
 } x264_image_properties_t;
 
 typedef struct
@@ -737,9 +776,13 @@ typedef struct
            of H.264 itself; in this case, the caller must force an IDR frame
            if it needs the changed parameter to apply immediately. */
     x264_param_t *param;
-    /* In: raw data */
+    /* In: raw image data */
+    /* Out: reconstructed image data.  x264 may skip part of the reconstruction process,
+            e.g. deblocking, in frames where it isn't necessary.  To force complete
+            reconstruction, at a small speed cost, set b_full_recon. */
     x264_image_t img;
-    /* In: optional information to modify encoder decisions for this frame */
+    /* In: optional information to modify encoder decisions for this frame
+     * Out: information about the encoded frame */
     x264_image_properties_t prop;
     /* Out: HRD timing information. Output only when i_nal_hrd is set. */
     x264_hrd_t hrd_timing;

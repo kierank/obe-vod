@@ -800,6 +800,7 @@ static void help( x264_param_t *defaults, int longhelp )
     H1( "      --psnr                  Enable PSNR computation\n" );
     H1( "      --ssim                  Enable SSIM computation\n" );
     H1( "      --threads <integer>     Force a specific number of threads\n" );
+    H2( "      --lookahead-threads <integer> Force a specific number of lookahead threads\n" );
     H2( "      --sliced-threads        Low-latency but lower-efficiency threading\n" );
     H2( "      --thread-input          Run Avisynth in its own thread\n" );
     H2( "      --sync-lookahead <integer> Number of buffer frames for threaded lookahead\n" );
@@ -1035,6 +1036,7 @@ static struct option long_options[] =
     { "speed",   required_argument, NULL, 0 },
     { "speed-bufsize", required_argument, NULL, 0 },
     { "threads",     required_argument, NULL, 0 },
+    { "lookahead-threads", required_argument, NULL, 0 },
     { "sliced-threads",    no_argument, NULL, 0 },
     { "no-sliced-threads", no_argument, NULL, 0 },
     { "slice-max-size",    required_argument, NULL, 0 },

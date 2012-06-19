@@ -56,6 +56,7 @@ do {\
 #define X264_BFRAME_MAX 16
 #define X264_REF_MAX 16
 #define X264_THREAD_MAX 128
+#define X264_LOOKAHEAD_THREAD_MAX 16
 #define X264_PCM_COST (FRAME_SIZE(256*BIT_DEPTH)+16)
 #define X264_LOOKAHEAD_MAX 250
 #define QP_BD_OFFSET (6*(BIT_DEPTH-8))
@@ -385,6 +386,7 @@ typedef struct
     } ref_pic_list_order[2][X264_REF_MAX];
 
     /* P-frame weighting */
+    int b_weighted_pred;
     x264_weight_t weight[X264_REF_MAX*2][3];
 
     int i_mmco_remove_from_end;
@@ -435,17 +437,51 @@ typedef struct x264_left_table_t
     uint8_t ref[4];
 } x264_left_table_t;
 
+/* Current frame stats */
+typedef struct
+{
+    /* MV bits (MV+Ref+Block Type) */
+    int i_mv_bits;
+    /* Texture bits (DCT coefs) */
+    int i_tex_bits;
+    /* ? */
+    int i_misc_bits;
+    /* MB type counts */
+    int i_mb_count[19];
+    int i_mb_count_i;
+    int i_mb_count_p;
+    int i_mb_count_skip;
+    int i_mb_count_8x8dct[2];
+    int i_mb_count_ref[2][X264_REF_MAX*2];
+    int i_mb_partition[17];
+    int i_mb_cbp[6];
+    int i_mb_pred_mode[4][13];
+    int i_mb_field[3];
+    /* Adaptive direct mv pred */
+    int i_direct_score[2];
+    /* Metrics */
+    int64_t i_ssd[3];
+    double f_ssim;
+    int i_ssim_cnt;
+} x264_frame_stat_t;
+
 struct x264_t
 {
     /* encoder parameters */
     x264_param_t    param;
 
     x264_t          *thread[X264_THREAD_MAX+1];
+    x264_t          *lookahead_thread[X264_LOOKAHEAD_THREAD_MAX];
     int             b_thread_active;
     int             i_thread_phase; /* which thread to use for the next frame */
+    int             i_thread_idx;   /* which thread this is */
     int             i_threadslice_start; /* first row in this thread slice */
     int             i_threadslice_end; /* row after the end of this thread slice */
+    int             i_threadslice_pass; /* which pass of encoding we are on */
     x264_threadpool_t *threadpool;
+    x264_threadpool_t *lookaheadpool;
+    x264_pthread_mutex_t mutex;
+    x264_pthread_cond_t cv;
 
     /* bitstream output */
     struct
@@ -482,6 +518,7 @@ struct x264_t
     int64_t         i_cpb_delay_lookahead;
 
     int64_t         i_cpb_delay_pir_offset;
+    int64_t         i_cpb_delay_pir_offset_next;
 
     int             b_queued_intra_refresh;
     int64_t         i_last_idr_pts;
@@ -796,6 +833,9 @@ struct x264_t
             /* extra data required for mbaff in mv prediction */
             int16_t topright_mv[2][3][2];
             int8_t  topright_ref[2][3];
+
+            /* current mb deblock strength */
+            uint8_t (*deblock_strength)[8][4];
         } cache;
 
         /* */
@@ -834,32 +874,7 @@ struct x264_t
     struct
     {
         /* Current frame stats */
-        struct
-        {
-            /* MV bits (MV+Ref+Block Type) */
-            int i_mv_bits;
-            /* Texture bits (DCT coefs) */
-            int i_tex_bits;
-            /* ? */
-            int i_misc_bits;
-            /* MB type counts */
-            int i_mb_count[19];
-            int i_mb_count_i;
-            int i_mb_count_p;
-            int i_mb_count_skip;
-            int i_mb_count_8x8dct[2];
-            int i_mb_count_ref[2][X264_REF_MAX*2];
-            int i_mb_partition[17];
-            int i_mb_cbp[6];
-            int i_mb_pred_mode[4][13];
-            int i_mb_field[3];
-            /* Adaptive direct mv pred */
-            int i_direct_score[2];
-            /* Metrics */
-            int64_t i_ssd[3];
-            double f_ssim;
-            int i_ssim_cnt;
-        } frame;
+        x264_frame_stat_t frame;
 
         /* Cumulated stats */
 
@@ -905,6 +920,7 @@ struct x264_t
 
     /* Buffers that are allocated per-thread even in sliced threads. */
     void *scratch_buffer; /* for any temporary storage that doesn't want repeated malloc */
+    void *scratch_buffer2; /* if the first one's already in use */
     pixel *intra_border_backup[5][3]; /* bottom pixels of the previous mb row, used for intra prediction after the framebuffer has been deblocked */
     /* Deblock strength values are stored for each 4x4 partition. In MBAFF
      * there are four extra values that need to be stored, located in [4][i]. */

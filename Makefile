@@ -182,11 +182,11 @@ $(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK): .depend
 	$(AS) $(ASFLAGS) -o $@ $<
 	-@ $(if $(STRIP), $(STRIP) -x $@) # delete local/anonymous symbols, so they don't show up in oprofile
 
-%.dll.o: %.rc
-	$(RC) -DDLL -o $@ $<
+%.dll.o: %.rc x264.h
+	$(RC) $(RCFLAGS)$@ -DDLL $<
 
-%.o: %.rc
-	$(RC) -o $@ $<
+%.o: %.rc x264.h
+	$(RC) $(RCFLAGS)$@ $<
 
 .depend: config.mak
 	@rm -f .depend

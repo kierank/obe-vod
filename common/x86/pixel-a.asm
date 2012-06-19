@@ -144,7 +144,7 @@ cextern hsub_mul
 
 %if HIGH_BIT_DEPTH
 ;-----------------------------------------------------------------------------
-; int pixel_ssd_MxN( uint16_t *, int, uint16_t *, int )
+; int pixel_ssd_MxN( uint16_t *, intptr_t, uint16_t *, intptr_t )
 ;-----------------------------------------------------------------------------
 %macro SSD_ONE 2
 cglobal pixel_ssd_%1x%2, 4,5,6
@@ -361,7 +361,7 @@ SSD_ONE    16, 16
 %endmacro
 
 ;-----------------------------------------------------------------------------
-; int pixel_ssd_16x16( uint8_t *, int, uint8_t *, int )
+; int pixel_ssd_16x16( uint8_t *, intptr_t, uint8_t *, intptr_t )
 ;-----------------------------------------------------------------------------
 %macro SSD 2
 %if %1 != %2
@@ -466,7 +466,7 @@ SSD  8,  4
 %endif ; !HIGH_BIT_DEPTH
 
 ;-----------------------------------------------------------------------------
-; void pixel_ssd_nv12_core( uint16_t *pixuv1, int stride1, uint16_t *pixuv2, int stride2,
+; void pixel_ssd_nv12_core( uint16_t *pixuv1, intptr_t stride1, uint16_t *pixuv2, intptr_t stride2,
 ;                           int width, int height, uint64_t *ssd_u, uint64_t *ssd_v )
 ;
 ; The maximum width this function can handle without risk of overflow is given
@@ -560,7 +560,7 @@ cglobal pixel_ssd_nv12_core, 6,7,7
 
 %if HIGH_BIT_DEPTH == 0
 ;-----------------------------------------------------------------------------
-; void pixel_ssd_nv12_core( uint8_t *pixuv1, int stride1, uint8_t *pixuv2, int stride2,
+; void pixel_ssd_nv12_core( uint8_t *pixuv1, intptr_t stride1, uint8_t *pixuv2, intptr_t stride2,
 ;                           int width, int height, uint64_t *ssd_u, uint64_t *ssd_v )
 ;
 ; This implementation can potentially overflow on image widths >= 11008 (or
@@ -697,7 +697,7 @@ SSD_NV12
 %endmacro
 
 ;-----------------------------------------------------------------------------
-; int pixel_var_wxh( uint8_t *, int )
+; int pixel_var_wxh( uint8_t *, intptr_t )
 ;-----------------------------------------------------------------------------
 INIT_MMX mmx2
 cglobal pixel_var_16x16, 2,3
@@ -820,7 +820,7 @@ VAR
 %endmacro
 
 ;-----------------------------------------------------------------------------
-; int pixel_var2_8x8( pixel *, int, pixel *, int, int * )
+; int pixel_var2_8x8( pixel *, intptr_t, pixel *, intptr_t, int * )
 ;-----------------------------------------------------------------------------
 %macro VAR2_8x8_MMX 2
 cglobal pixel_var2_8x%1, 5,6
@@ -1128,7 +1128,7 @@ VAR2_8x8_SSSE3 16, 7
 ; for small blocks on x86_32, modify pixel pointer instead.
 
 ;-----------------------------------------------------------------------------
-; int pixel_satd_16x16( uint8_t *, int, uint8_t *, int )
+; int pixel_satd_16x16( uint8_t *, intptr_t, uint8_t *, intptr_t )
 ;-----------------------------------------------------------------------------
 INIT_MMX mmx2
 cglobal pixel_satd_16x4_internal
@@ -1335,7 +1335,7 @@ cglobal pixel_satd_4x4, 4,6
 %endmacro
 
 ;-----------------------------------------------------------------------------
-; int pixel_satd_8x4( uint8_t *, int, uint8_t *, int )
+; int pixel_satd_8x4( uint8_t *, intptr_t, uint8_t *, intptr_t )
 ;-----------------------------------------------------------------------------
 %macro SATDS_SSE2 0
 %if cpuflag(ssse3)
@@ -1476,7 +1476,7 @@ cglobal pixel_satd_8x4, 4,6,8
 
 %if ARCH_X86_64
 ;-----------------------------------------------------------------------------
-; int pixel_sa8d_8x8( uint8_t *, int, uint8_t *, int )
+; int pixel_sa8d_8x8( uint8_t *, intptr_t, uint8_t *, intptr_t )
 ;-----------------------------------------------------------------------------
 cglobal pixel_sa8d_8x8_internal
     lea  r6, [r0+4*r1]
@@ -2007,9 +2007,14 @@ cglobal intra_satd_x3_16x16, 0,5
     inc         r4
     jl  .loop_x
 %if HIGH_BIT_DEPTH
-    mova        m7, [pw_1]
-    pmaddwd     m4, m7
-    pmaddwd     m0, m7
+    psrld       m7, m4, 16
+    pslld       m4, 16
+    psrld       m4, 16
+    paddd       m4, m7
+    psrld       m7, m0, 16
+    pslld       m0, 16
+    psrld       m0, 16
+    paddd       m0, m7
     paddd       m4, [sums+32]
     paddd       m0, [sums+24]
     mova [sums+32], m4
@@ -3836,8 +3841,8 @@ HADAMARD_AC_SSE2
 ;=============================================================================
 
 ;-----------------------------------------------------------------------------
-; void pixel_ssim_4x4x2_core( const uint8_t *pix1, int stride1,
-;                             const uint8_t *pix2, int stride2, int sums[2][4] )
+; void pixel_ssim_4x4x2_core( const uint8_t *pix1, intptr_t stride1,
+;                             const uint8_t *pix2, intptr_t stride2, int sums[2][4] )
 ;-----------------------------------------------------------------------------
 %macro SSIM_ITER 1
 %if HIGH_BIT_DEPTH
@@ -3996,13 +4001,82 @@ SSIM
 INIT_XMM avx
 SSIM
 
+;-----------------------------------------------------------------------------
+; int pixel_asd8( pixel *pix1, intptr_t stride1, pixel *pix2, intptr_t stride2, int height );
+;-----------------------------------------------------------------------------
+%macro ASD8 0
+cglobal pixel_asd8, 5,5
+    pxor     m0, m0
+    pxor     m1, m1
+.loop:
+%if HIGH_BIT_DEPTH
+    paddw    m0, [r0]
+    paddw    m1, [r2]
+    paddw    m0, [r0+2*r1]
+    paddw    m1, [r2+2*r3]
+    lea      r0, [r0+4*r1]
+    paddw    m0, [r0]
+    paddw    m1, [r2+4*r3]
+    lea      r2, [r2+4*r3]
+    paddw    m0, [r0+2*r1]
+    paddw    m1, [r2+2*r3]
+    lea      r0, [r0+4*r1]
+    lea      r2, [r2+4*r3]
+%else
+    movq     m2, [r0]
+    movq     m3, [r2]
+    movhps   m2, [r0+r1]
+    movhps   m3, [r2+r3]
+    lea      r0, [r0+2*r1]
+    psadbw   m2, m1
+    psadbw   m3, m1
+    movq     m4, [r0]
+    movq     m5, [r2+2*r3]
+    lea      r2, [r2+2*r3]
+    movhps   m4, [r0+r1]
+    movhps   m5, [r2+r3]
+    lea      r0, [r0+2*r1]
+    paddw    m0, m2
+    psubw    m0, m3
+    psadbw   m4, m1
+    psadbw   m5, m1
+    lea      r2, [r2+2*r3]
+    paddw    m0, m4
+    psubw    m0, m5
+%endif
+    sub     r4d, 4
+    jg .loop
+%if HIGH_BIT_DEPTH
+    psubw    m0, m1
+    HADDW    m0, m1
+    ABSD     m1, m0
+%else
+    movhlps  m1, m0
+    paddw    m0, m1
+    ABSW     m1, m0
+%endif
+    movd    eax, m1
+    RET
+%endmacro
+
+INIT_XMM sse2
+ASD8
+INIT_XMM ssse3
+ASD8
+%if HIGH_BIT_DEPTH
+INIT_XMM xop
+ASD8
+%endif
+
 ;=============================================================================
 ; Successive Elimination ADS
 ;=============================================================================
 
 %macro ADS_START 0
-%if WIN64
+%if UNIX64
     movsxd  r5,  r5d
+%else
+    mov     r5d, r5m
 %endif
     mov     r0d, r5d
     lea     r6,  [r4+r5+15]
@@ -4025,7 +4099,7 @@ SSIM
 ;                 uint16_t *cost_mvx, int16_t *mvs, int width, int thresh )
 ;-----------------------------------------------------------------------------
 INIT_MMX mmx2
-cglobal pixel_ads4, 6,7
+cglobal pixel_ads4, 5,7
     movq    mm6, [r0]
     movq    mm4, [r0+8]
     pshufw  mm7, mm6, 0
@@ -4056,7 +4130,7 @@ cglobal pixel_ads4, 6,7
     movd    [r6], mm1
     ADS_END 1
 
-cglobal pixel_ads2, 6,7
+cglobal pixel_ads2, 5,7
     movq    mm6, [r0]
     pshufw  mm5, r6m, 0
     pshufw  mm7, mm6, 0
@@ -4077,7 +4151,7 @@ cglobal pixel_ads2, 6,7
     movd    [r6], mm4
     ADS_END 1
 
-cglobal pixel_ads1, 6,7
+cglobal pixel_ads1, 5,7
     pshufw  mm7, [r0], 0
     pshufw  mm6, r6m, 0
     ADS_START
@@ -4099,7 +4173,7 @@ cglobal pixel_ads1, 6,7
     ADS_END 2
 
 %macro ADS_XMM 0
-cglobal pixel_ads4, 6,7,12
+cglobal pixel_ads4, 5,7,12
     movdqa  xmm4, [r0]
     pshuflw xmm7, xmm4, 0
     pshuflw xmm6, xmm4, q2222
@@ -4163,7 +4237,7 @@ cglobal pixel_ads4, 6,7,12
 %endif ; ARCH
     ADS_END 2
 
-cglobal pixel_ads2, 6,7,8
+cglobal pixel_ads2, 5,7,8
     movq    xmm6, [r0]
     movd    xmm5, r6m
     pshuflw xmm7, xmm6, 0
@@ -4188,7 +4262,7 @@ cglobal pixel_ads2, 6,7,8
     movq    [r6], xmm1
     ADS_END 2
 
-cglobal pixel_ads1, 6,7,8
+cglobal pixel_ads1, 5,7,8
     movd    xmm7, [r0]
     movd    xmm6, r6m
     pshuflw xmm7, xmm7, 0
