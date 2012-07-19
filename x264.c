@@ -384,7 +384,7 @@ static void help( x264_param_t *defaults, int longhelp )
 #define H0 printf
 #define H1 if(longhelp>=1) printf
 #define H2 if(longhelp==2) printf
-    H0( "OBE VoD 0.3 encoder based on x264 core:%d%s\n"
+    H0( "OBE VoD 0.4b encoder based on x264 core:%d%s\n"
         "Syntax: obe-vod [options] -o outfile infile\n"
         "\n"
         "Infile can be raw (in which case resolution is required),\n"
