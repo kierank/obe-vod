@@ -79,7 +79,15 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     int program_num = 1; // 0 is NIT
 
     int ts_id, num_programs, ret, aac_level;
-    ts_id = num_programs = 1;
+    num_programs = 1;
+
+    ts_id = p_ts->opt.i_ts_id > 0 ? p_ts->opt.i_ts_id : 1;
+    if ( ts_id > 0xff )
+    {
+        fprintf( stderr, "[ts] invalid TS id %d (max %d)\n", ts_id, 0xff );
+        return -1;
+    }
+
     ts_extra_opt_t *extra_stream;
     char *ext;
 

@@ -59,6 +59,7 @@ typedef struct
     int i_ts_muxrate;
     int i_ts_type;
     int b_ts_cbr;
+    int i_ts_id;
     int i_ts_video_pid;
     int i_ts_pmt_pid;
     int i_ts_pcr_pid;

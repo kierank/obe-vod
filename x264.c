@@ -922,6 +922,7 @@ typedef enum
 #ifdef HAVE_LIBMPEGTS
     OPT_TS_MUXRATE,
     OPT_TS_CBR,
+    OPT_TS_ID,
     OPT_TS_VIDEO_PID,
     OPT_TS_PMT_PID,
     OPT_TS_PCR_PID,
@@ -1098,6 +1099,7 @@ static struct option long_options[] =
     { "ts-type",     required_argument, NULL, OPT_TS_TYPE},
     { "ts-cbr",            no_argument, NULL, OPT_TS_CBR },
     { "ts-dvb-au",         no_argument, NULL, OPT_TS_DVB_AU },
+    { "ts-id",       required_argument, NULL, OPT_TS_ID },
     { "ts-video-pid", required_argument, NULL, OPT_TS_VIDEO_PID },
     { "ts-pmt-pid",  required_argument, NULL, OPT_TS_PMT_PID },
     { "ts-pcr-pid",  required_argument, NULL, OPT_TS_PCR_PID },
@@ -1523,6 +1525,9 @@ static int parse( int argc, char **argv, x264_param_t *param, cli_opt_t *opt )
                 break;
             case OPT_TS_TYPE:
                 FAIL_IF_ERROR( parse_enum_value( optarg, ts_types, &output_opt.i_ts_type ), "Unknown ts type `%s'\n", optarg )
+                break;
+            case OPT_TS_ID:
+                output_opt.i_ts_id = atoi( optarg );
                 break;
             case OPT_TS_CBR:
                 output_opt.b_ts_cbr = 1;
