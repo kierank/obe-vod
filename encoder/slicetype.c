@@ -582,7 +582,7 @@ static void x264_slicetype_mb_cost( x264_t *h, x264_mb_analysis_t *a,
 #define TRY_BIDIR( mv0, mv1, penalty ) \
     { \
         int i_cost; \
-        if( h->param.analyse.i_subpel_refine <= 1 && !MPEG2 ) \
+        if( h->param.analyse.i_subpel_refine <= 1 ) \
         { \
             int hpel_idx1 = (((mv0)[0]&2)>>1) + ((mv0)[1]&2); \
             int hpel_idx2 = (((mv1)[0]&2)>>1) + ((mv1)[1]&2); \
