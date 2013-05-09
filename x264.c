@@ -259,7 +259,6 @@ static void print_version_info( void )
     printf( "using an unknown compiler\n" );
 #endif
     printf( "configuration: --bit-depth=%d --chroma-format=%s\n", x264_bit_depth, X264_CHROMA_FORMAT ? (output_csp_names[0]+1) : "all" );
-<<<<<<< HEAD
     printf( "obe-vod license: " );
     printf( "GPL version 2 or later\n" );
 #if HAVE_SWSCALE
