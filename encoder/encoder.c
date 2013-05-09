@@ -3626,11 +3626,14 @@ int     x264_encoder_encode( x264_t *h,
         if( h->i_thread_frames == 1 && h->param.i_nal_hrd )
         {
             x264_hrd_fullness( h );
-            x264_nal_start( h, NAL_SEI, NAL_PRIORITY_DISPOSABLE );
-            x264_sei_buffering_period_write( h, &h->out.bs );
-            if( x264_nal_end( h ) )
-               return -1;
-            overhead += h->out.nal[h->out.i_nal-1].i_payload + NALU_OVERHEAD;
+            if( !MPEG2 )
+            {
+                x264_nal_start( h, NAL_SEI, NAL_PRIORITY_DISPOSABLE );
+                x264_sei_buffering_period_write( h, &h->out.bs );
+                if( x264_nal_end( h ) )
+                   return -1;
+                overhead += h->out.nal[h->out.i_nal-1].i_payload + NALU_OVERHEAD;
+            }
         }
     }
 
@@ -3795,19 +3798,22 @@ static int x264_encoder_frame_end( x264_t *h, x264_t *thread_current,
     if( h->i_thread_frames > 1 && h->fenc->b_keyframe && h->param.i_nal_hrd )
     {
         x264_hrd_fullness( h );
-        x264_nal_start( h, NAL_SEI, NAL_PRIORITY_DISPOSABLE );
-        x264_sei_buffering_period_write( h, &h->out.bs );
-        if( x264_nal_end( h ) )
-           return -1;
-        /* buffering period sei must follow AUD, SPS and PPS and precede all other SEIs */
-        int idx = 0;
-        while( h->out.nal[idx].i_type == NAL_AUD ||
-               h->out.nal[idx].i_type == NAL_SPS ||
-               h->out.nal[idx].i_type == NAL_PPS )
-            idx++;
-        x264_nal_t nal_tmp = h->out.nal[h->out.i_nal-1];
-        memmove( &h->out.nal[idx+1], &h->out.nal[idx], (h->out.i_nal-idx-1)*sizeof(x264_nal_t) );
-        h->out.nal[idx] = nal_tmp;
+        if( !MPEG2 )
+        {
+            x264_nal_start( h, NAL_SEI, NAL_PRIORITY_DISPOSABLE );
+            x264_sei_buffering_period_write( h, &h->out.bs );
+            if( x264_nal_end( h ) )
+               return -1;
+            /* buffering period sei must follow AUD, SPS and PPS and precede all other SEIs */
+            int idx = 0;
+            while( h->out.nal[idx].i_type == NAL_AUD ||
+                   h->out.nal[idx].i_type == NAL_SPS ||
+                   h->out.nal[idx].i_type == NAL_PPS )
+                idx++;
+            x264_nal_t nal_tmp = h->out.nal[h->out.i_nal-1];
+            memmove( &h->out.nal[idx+1], &h->out.nal[idx], (h->out.i_nal-idx-1)*sizeof(x264_nal_t) );
+            h->out.nal[idx] = nal_tmp;
+        }
     }
 
     int frame_size = x264_encoder_encapsulate_nals( h, 0 );

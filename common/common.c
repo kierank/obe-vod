@@ -57,7 +57,7 @@ static void x264_param_force_mpeg2( x264_param_t *param )
     param->b_aud = 0;
     param->i_bframe_pyramid = X264_B_PYRAMID_NONE;
     param->b_deblocking_filter = 0;
-    param->i_nal_hrd = X264_NAL_HRD_NONE;
+    //param->i_nal_hrd = X264_NAL_HRD_NONE;
     param->b_cabac = 0;
     param->i_slice_max_size = 0;
     param->i_slice_max_mbs = 0;
