@@ -1,7 +1,7 @@
 /*****************************************************************************
  * rdo.c: rate-distortion optimization
  *****************************************************************************
- * Copyright (C) 2005-2012 x264 project
+ * Copyright (C) 2005-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Jason Garrett-Glaser <darkshikari@gmail.com>
@@ -67,6 +67,10 @@ static uint16_t cabac_size_5ones[128];
         sizeof(x264_cabac_t) - offsetof(x264_cabac_t,f8_bits_encoded) - (CHROMA444 ? 0 : (1024+12)-460) )
 #define COPY_CABAC_PART( pos, size )\
         memcpy( &cb->state[pos], &h->cabac.state[pos], size )
+
+/* MPEG-2 */
+#define x264_macroblock_write_vlc_mpeg2  static x264_macroblock_size_vlc_mpeg2
+#include "mpeg2vlc.c"
 
 static ALWAYS_INLINE uint64_t cached_hadamard( x264_t *h, int size, int x, int y )
 {
@@ -158,6 +162,15 @@ static int x264_rd_cost_mb( x264_t *h, int i_lambda2 )
     int i_ssd;
     int i_bits;
     int type_bak = h->mb.i_type;
+    int i_intra_dc_predictor_bak[8];
+    int16_t mvp[2][2][2];
+
+    if( MPEG2 )
+    {
+        memcpy( i_intra_dc_predictor_bak, h->mb.i_intra_dc_predictor, sizeof(i_intra_dc_predictor_bak) );
+        CP64( mvp[0], h->mb.mvp[0] );
+        CP64( mvp[1], h->mb.mvp[1] );
+    }
 
     x264_macroblock_encode( h );
 
@@ -166,7 +179,23 @@ static int x264_rd_cost_mb( x264_t *h, int i_lambda2 )
 
     i_ssd = ssd_mb( h );
 
-    if( IS_SKIP( h->mb.i_type ) )
+    if( MPEG2 )
+    {
+        if( IS_SKIP( h->mb.i_type ) )
+        {
+            // TODO
+            i_bits = 0;
+        }
+        else
+        {
+            x264_macroblock_size_vlc_mpeg2( h );
+            i_bits = ( h->out.bs.i_bits_encoded * i_lambda2 + 128 ) >> 8; // FIXME
+        }
+        memcpy( h->mb.i_intra_dc_predictor, i_intra_dc_predictor_bak, sizeof(i_intra_dc_predictor_bak) );
+        CP64( h->mb.mvp[0], mvp[0] );
+        CP64( h->mb.mvp[1], mvp[1] );
+    }
+    else if( IS_SKIP( h->mb.i_type ) )
     {
         i_bits = (1 * i_lambda2 + 128) >> 8;
     }
@@ -228,7 +257,7 @@ uint64_t x264_rd_cost_part( x264_t *h, int i_lambda2, int i4, int i_pixel )
     uint64_t i_ssd, i_bits;
     int i8 = i4 >> 2;
 
-    if( i_pixel == PIXEL_16x16 )
+    if( i_pixel == PIXEL_16x16 || MPEG2 )
     {
         int i_cost = x264_rd_cost_mb( h, i_lambda2 );
         return i_cost;
@@ -634,13 +663,13 @@ int quant_trellis_cabac( x264_t *h, dctcoef *dct,
                          const uint8_t *zigzag, int ctx_block_cat, int lambda2, int b_ac,
                          int b_chroma, int dc, int num_coefs, int idx )
 {
-    ALIGNED_ARRAY_16( dctcoef, orig_coefs, [64] );
-    ALIGNED_ARRAY_16( dctcoef, quant_coefs, [64] );
+    ALIGNED_ARRAY_N( dctcoef, orig_coefs, [64] );
+    ALIGNED_ARRAY_N( dctcoef, quant_coefs, [64] );
     const uint32_t *coef_weight1 = num_coefs == 64 ? x264_dct8_weight_tab : x264_dct4_weight_tab;
     const uint32_t *coef_weight2 = num_coefs == 64 ? x264_dct8_weight2_tab : x264_dct4_weight2_tab;
     const int b_interlaced = MB_INTERLACED;
-    uint8_t *cabac_state_sig = &h->cabac.state[ significant_coeff_flag_offset[b_interlaced][ctx_block_cat] ];
-    uint8_t *cabac_state_last = &h->cabac.state[ last_coeff_flag_offset[b_interlaced][ctx_block_cat] ];
+    uint8_t *cabac_state_sig = &h->cabac.state[ x264_significant_coeff_flag_offset[b_interlaced][ctx_block_cat] ];
+    uint8_t *cabac_state_last = &h->cabac.state[ x264_last_coeff_flag_offset[b_interlaced][ctx_block_cat] ];
     int levelgt1_ctx = b_chroma && dc ? 8 : 9;
 
     if( dc )
@@ -683,7 +712,7 @@ int quant_trellis_cabac( x264_t *h, dctcoef *dct,
     }
 
     int last_nnz = h->quantf.coeff_last[ctx_block_cat]( quant_coefs+b_ac )+b_ac;
-    uint8_t *cabac_state = &h->cabac.state[ coeff_abs_level_m1_offset[ctx_block_cat] ];
+    uint8_t *cabac_state = &h->cabac.state[ x264_coeff_abs_level_m1_offset[ctx_block_cat] ];
 
     /* shortcut for dc-only blocks.
      * this doesn't affect the output, but saves some unnecessary computation. */
@@ -1161,5 +1190,6 @@ int x264_quant_8x8_trellis( x264_t *h, dctcoef *dct, int i_quant_cat,
         h->mb.cache.non_zero_count[x264_scan8[idx*4+i]] = nz;
         nzaccum |= nz;
     }
+    STORE_8x8_NNZ( 0, idx, 0 );
     return nzaccum;
 }

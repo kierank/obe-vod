@@ -23,6 +23,7 @@ config.mak
 config.log
 x264_config.h
 x264
+x262
 checkasm
 
 *.264
@@ -43,3 +44,5 @@ checkasm
 .digress_x264
 dataDec.txt
 log.dec
+common/oclobj.h
+x264_lookahead.clbin

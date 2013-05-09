@@ -1,7 +1,7 @@
 /*****************************************************************************
  * cabac.c: arithmetic coder
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
@@ -1325,7 +1325,7 @@ const uint16_t x264_cabac_entropy[128] =
     FIX8(0.9285), FIX8(1.0752), FIX8(1.0000), FIX8(1.0000)
 };
 
-uint8_t x264_cabac_contexts[4][QP_MAX_SPEC+1][1024];
+uint8_t x264_cabac_contexts[4][QP_MAX_SPEC_H264+1][1024];
 
 void x264_cabac_init( x264_t *h )
 {
@@ -1334,7 +1334,7 @@ void x264_cabac_init( x264_t *h )
     {
         const int8_t (*cabac_context_init)[1024][2] = i == 0 ? &x264_cabac_context_init_I
                                                              : &x264_cabac_context_init_PB[i-1];
-        for( int qp = 0; qp <= QP_MAX_SPEC; qp++ )
+        for( int qp = 0; qp <= QP_MAX_SPEC_H264; qp++ )
             for( int j = 0; j < ctx_count; j++ )
             {
                 int state = x264_clip3( (((*cabac_context_init)[j][0] * qp) >> 4) + (*cabac_context_init)[j][1], 1, 126 );

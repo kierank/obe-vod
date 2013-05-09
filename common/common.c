@@ -1,7 +1,7 @@
 /*****************************************************************************
  * common.c: misc common functions
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -38,6 +38,33 @@ const int x264_bit_depth = BIT_DEPTH;
 const int x264_chroma_format = X264_CHROMA_FORMAT;
 
 static void x264_log_default( void *, int, const char *, va_list );
+static void x264_log_mpeg2( void *, int, const char *, va_list );
+
+static void x264_param_force_mpeg2( x264_param_t *param )
+{
+    /* These must be set when encoding MPEG-2 */
+    param->b_mpeg2 = 1;
+    param->analyse.b_transform_8x8 = 0;
+    param->analyse.intra = 0;
+    param->analyse.inter = 0;
+    param->analyse.i_weighted_pred = 0;
+    param->analyse.b_weighted_bipred = 0;
+    param->analyse.b_dct_decimate = 0;
+    param->analyse.i_direct_mv_pred = X264_DIRECT_PRED_NONE;
+    param->analyse.b_mixed_references = 0;
+    param->analyse.i_trellis = 0;
+    param->b_constrained_intra = 0;
+    param->b_aud = 0;
+    param->i_bframe_pyramid = X264_B_PYRAMID_NONE;
+    param->b_deblocking_filter = 0;
+    param->i_nal_hrd = X264_NAL_HRD_NONE;
+    param->b_cabac = 0;
+    param->i_slice_max_size = 0;
+    param->i_slice_max_mbs = 0;
+    param->i_slice_count = 0;
+    param->b_sliced_threads = 0;
+    param->i_frame_reference = 1;
+}
 
 /****************************************************************************
  * x264_param_default:
@@ -176,6 +203,23 @@ void x264_param_default( x264_param_t *param )
     param->b_pic_struct = 0;
     param->b_fake_interlaced = 0;
     param->i_frame_packing = -1;
+    param->b_opencl = 0;
+    param->i_opencl_device = 0;
+    param->opencl_device_id = NULL;
+    param->psz_clbin_file = NULL;
+    param->b_mpeg2 = 0;
+}
+
+void x264_param_default_mpeg2( x264_param_t *param )
+{
+    x264_param_default( param );
+    x264_param_force_mpeg2( param );
+
+    param->pf_log = x264_log_mpeg2;
+    param->i_intra_dc_precision = X264_INTRA_DC_8_BIT;
+    param->b_nonlinear_quant = 1;
+    param->b_alt_intra_vlc = 1;
+    param->b_alternate_scan = 0;
 }
 
 static int x264_param_apply_preset( x264_param_t *param, const char *preset )
@@ -299,6 +343,10 @@ static int x264_param_apply_preset( x264_param_t *param, const char *preset )
         x264_log( NULL, X264_LOG_ERROR, "invalid preset '%s'\n", preset );
         return -1;
     }
+
+    if( param->b_mpeg2 )
+        x264_param_force_mpeg2( param );
+
     return 0;
 }
 
@@ -405,18 +453,31 @@ static int x264_param_apply_tune( x264_param_t *param, const char *tune )
         s = strtok( NULL, ",./-+" );
     }
     x264_free( tmp );
+
+    if( param->b_mpeg2 )
+        x264_param_force_mpeg2( param );
+
     return 0;
 }
 
 int x264_param_default_preset( x264_param_t *param, const char *preset, const char *tune )
 {
-    x264_param_default( param );
+    if( param->b_mpeg2 )
+        x264_param_default_mpeg2( param );
+    else
+        x264_param_default( param );
 
     if( preset && x264_param_apply_preset( param, preset ) < 0 )
         return -1;
     if( tune && x264_param_apply_tune( param, tune ) < 0 )
         return -1;
     return 0;
+}
+
+int x264_param_default_preset_mpeg2( x264_param_t *param, const char *preset, const char *tune )
+{
+    param->b_mpeg2 = 1;
+    return x264_param_default_preset( param, preset, tune );
 }
 
 void x264_param_apply_fastfirstpass( x264_param_t *param )
@@ -434,34 +495,68 @@ void x264_param_apply_fastfirstpass( x264_param_t *param )
     }
 }
 
-static int profile_string_to_int( const char *str )
+static int profile_string_to_int( const char *str, int b_mpeg2 )
 {
     if( !strcasecmp( str, "baseline" ) )
-        return PROFILE_BASELINE;
+        return b_mpeg2 ? -1 : PROFILE_BASELINE;
+    if( !strcasecmp( str, "simple" ) )
+        return b_mpeg2 ? MPEG2_PROFILE_SIMPLE : -1;
     if( !strcasecmp( str, "main" ) )
-        return PROFILE_MAIN;
+        return b_mpeg2 ? MPEG2_PROFILE_MAIN : PROFILE_MAIN;
+    if( !strcasecmp( str, "422" ) )
+        return b_mpeg2 ? MPEG2_PROFILE_422 : -1;
     if( !strcasecmp( str, "high" ) )
-        return PROFILE_HIGH;
+        return b_mpeg2 ? MPEG2_PROFILE_HIGH : PROFILE_HIGH;
     if( !strcasecmp( str, "high10" ) )
-        return PROFILE_HIGH10;
+        return b_mpeg2 ? -1 : PROFILE_HIGH10;
     if( !strcasecmp( str, "high422" ) )
-        return PROFILE_HIGH422;
+        return b_mpeg2 ? -1 : PROFILE_HIGH422;
     if( !strcasecmp( str, "high444" ) )
-        return PROFILE_HIGH444_PREDICTIVE;
+        return b_mpeg2 ? -1 : PROFILE_HIGH444_PREDICTIVE;
     return -1;
 }
 
 int x264_param_apply_profile( x264_param_t *param, const char *profile )
 {
+    /* Force MPEG-2 settings */
+    if( param->b_mpeg2 )
+        x264_param_force_mpeg2( param );
+
     if( !profile )
         return 0;
 
-    int p = profile_string_to_int( profile );
+    int p = profile_string_to_int( profile, param->b_mpeg2 );
     if( p < 0 )
     {
         x264_log( NULL, X264_LOG_ERROR, "invalid profile: %s\n", profile );
         return -1;
     }
+
+    if( param->b_mpeg2 )
+    {
+        if( p == MPEG2_PROFILE_HIGH )
+            param->b_high_profile = 1;
+        else if( p == MPEG2_PROFILE_422 )
+            param->b_422_profile = 1;
+        else if( p == MPEG2_PROFILE_MAIN )
+        {
+            param->b_main_profile = 1;
+            param->i_intra_dc_precision = x264_clip3( param->i_intra_dc_precision,
+                                                      X264_INTRA_DC_8_BIT, X264_INTRA_DC_10_BIT );
+        }
+        else if( p == MPEG2_PROFILE_SIMPLE )
+        {
+            param->i_bframe = 0;
+            param->i_intra_dc_precision = X264_INTRA_DC_8_BIT;
+            if( param->b_interlaced || param->b_fake_interlaced )
+            {
+                x264_log( NULL, X264_LOG_ERROR, "simple profile doesn't support interlacing\n" );
+                return -1;
+            }
+        }
+        return 0;
+    }
+
     if( p < PROFILE_HIGH444_PREDICTIVE && ((param->rc.i_rc_method == X264_RC_CQP && param->rc.i_qp_constant <= 0) ||
         (param->rc.i_rc_method == X264_RC_CRF && (int)(param->rc.f_rf_constant + QP_BD_OFFSET) <= 0)) )
     {
@@ -494,12 +589,17 @@ int x264_param_apply_profile( x264_param_t *param, const char *profile )
         param->analyse.i_weighted_pred = X264_WEIGHTP_NONE;
         if( param->b_interlaced )
         {
-            x264_log( NULL, X264_LOG_ERROR, "baseline profile doesn't support interlacing\n" );
-            return -1;
+            param->analyse.b_transform_8x8 = 0;
+            param->i_cqm_preset = X264_CQM_FLAT;
+            param->psz_cqm_file = NULL;
         }
-        if( param->b_fake_interlaced )
+        else if( !strcasecmp( profile, "high" ) || !strcasecmp( profile, "high10" ) )
         {
-            x264_log( NULL, X264_LOG_ERROR, "baseline profile doesn't support fake interlacing\n" );
+            /* Default H.264 */
+        }
+        else
+        {
+            x264_log( NULL, X264_LOG_ERROR, "invalid profile: %s\n", profile );
             return -1;
         }
     }
@@ -523,12 +623,13 @@ static int parse_enum( const char *arg, const char * const *names, int *dst )
     return -1;
 }
 
-static int parse_cqm( const char *str, uint8_t *cqm, int length )
+static int parse_cqm( const char *str, uint8_t *cqm, int length, int b_mpeg2 )
 {
     int i = 0;
+    int min = b_mpeg2 ? 4 : 1;
     do {
         int coef;
-        if( !sscanf( str, "%d", &coef ) || coef < 1 || coef > 255 )
+        if( !sscanf( str, "%d", &coef ) || coef < min || coef > 255 )
             return -1;
         cqm[i++] = coef;
     } while( i < length && (str = strchr( str, ',' )) && str++ );
@@ -568,6 +669,8 @@ static double x264_atof( const char *str, int *b_error )
 }
 
 #define atobool(str) ( name_was_bool = 1, x264_atobool( str, &b_error ) )
+#undef atoi
+#undef atof
 #define atoi(str) x264_atoi( str, &b_error )
 #define atof(str) x264_atof( str, &b_error )
 
@@ -625,10 +728,8 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
                     b_error = 1;
             }
             free( buf );
-            if( p->cpu & X264_CPU_SSSE3 )
+            if( (p->cpu&X264_CPU_SSSE3) && !(p->cpu&X264_CPU_SSE2_IS_SLOW) )
                 p->cpu |= X264_CPU_SSE2_IS_FAST;
-            if( p->cpu & X264_CPU_SSE4 )
-                p->cpu |= X264_CPU_SHUFFLE_IS_FAST;
         }
     }
     OPT("threads")
@@ -662,6 +763,31 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
     {
         if( !strcmp(value, "1b") )
             p->i_level_idc = 9;
+        else if( !strcmp(value, "low") )
+        {
+            p->i_level_idc = X264_MPEG2_LEVEL_LOW;
+            p->b_mpeg2 = 1;
+        }
+        else if( !strcmp(value, "main") )
+        {
+            p->i_level_idc = X264_MPEG2_LEVEL_MAIN;
+            p->b_mpeg2 = 1;
+        }
+        else if( !strcmp(value, "high-1440") )
+        {
+            p->i_level_idc = X264_MPEG2_LEVEL_HIGH_1440;
+            p->b_mpeg2 = 1;
+        }
+        else if( !strcmp(value, "high") )
+        {
+            p->i_level_idc = X264_MPEG2_LEVEL_HIGH;
+            p->b_mpeg2 = 1;
+        }
+        else if( !strcmp(value, "highp") )
+        {
+            p->i_level_idc = X264_MPEG2_LEVEL_HIGHP;
+            p->b_mpeg2 = 1;
+        }
         else if( atof(value) < 6 )
             p->i_level_idc = (int)(10*atof(value)+.5);
         else
@@ -783,8 +909,24 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
         p->i_slice_max_size = atoi(value);
     OPT("slice-max-mbs")
         p->i_slice_max_mbs = atoi(value);
+    OPT("slice-min-mbs")
+        p->i_slice_min_mbs = atoi(value);
     OPT("slices")
         p->i_slice_count = atoi(value);
+    OPT("slices-max")
+        p->i_slice_count_max = atoi(value);
+#if HAVE_MPEG2
+    OPT("mpeg2")
+        p->b_mpeg2 = atobool(value);
+    OPT("dc")
+        p->i_intra_dc_precision = atoi(value) - 8;
+    OPT("altscan")
+        p->b_alternate_scan = atobool(value);
+    OPT("linear-quant")
+        p->b_nonlinear_quant = !atobool(value);
+    OPT("altintra")
+        p->b_alt_intra_vlc = atobool(value);
+#endif
     OPT("cabac")
         p->b_cabac = atobool(value);
     OPT("cabac-idc")
@@ -814,62 +956,62 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
     OPT("cqm4")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4iy, 16 );
-        b_error |= parse_cqm( value, p->cqm_4py, 16 );
-        b_error |= parse_cqm( value, p->cqm_4ic, 16 );
-        b_error |= parse_cqm( value, p->cqm_4pc, 16 );
+        b_error |= parse_cqm( value, p->cqm_4iy, 16, 0 );
+        b_error |= parse_cqm( value, p->cqm_4py, 16, 0 );
+        b_error |= parse_cqm( value, p->cqm_4ic, 16, 0 );
+        b_error |= parse_cqm( value, p->cqm_4pc, 16, 0 );
     }
     OPT("cqm8")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_8iy, 64 );
-        b_error |= parse_cqm( value, p->cqm_8py, 64 );
-        b_error |= parse_cqm( value, p->cqm_8ic, 64 );
-        b_error |= parse_cqm( value, p->cqm_8pc, 64 );
+        b_error |= parse_cqm( value, p->cqm_8iy, 64, p->b_mpeg2 );
+        b_error |= parse_cqm( value, p->cqm_8py, 64, p->b_mpeg2 );
+        b_error |= parse_cqm( value, p->cqm_8ic, 64, p->b_mpeg2 );
+        b_error |= parse_cqm( value, p->cqm_8pc, 64, p->b_mpeg2 );
     }
     OPT("cqm4i")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4iy, 16 );
-        b_error |= parse_cqm( value, p->cqm_4ic, 16 );
+        b_error |= parse_cqm( value, p->cqm_4iy, 16, 0 );
+        b_error |= parse_cqm( value, p->cqm_4ic, 16, 0 );
     }
     OPT("cqm4p")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4py, 16 );
-        b_error |= parse_cqm( value, p->cqm_4pc, 16 );
+        b_error |= parse_cqm( value, p->cqm_4py, 16, 0 );
+        b_error |= parse_cqm( value, p->cqm_4pc, 16, 0 );
     }
     OPT("cqm4iy")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4iy, 16 );
+        b_error |= parse_cqm( value, p->cqm_4iy, 16, 0 );
     }
     OPT("cqm4ic")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4ic, 16 );
+        b_error |= parse_cqm( value, p->cqm_4ic, 16, 0 );
     }
     OPT("cqm4py")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4py, 16 );
+        b_error |= parse_cqm( value, p->cqm_4py, 16, 0 );
     }
     OPT("cqm4pc")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_4pc, 16 );
+        b_error |= parse_cqm( value, p->cqm_4pc, 16, 0 );
     }
     OPT("cqm8i")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_8iy, 64 );
-        b_error |= parse_cqm( value, p->cqm_8ic, 64 );
+        b_error |= parse_cqm( value, p->cqm_8iy, 64, p->b_mpeg2 );
+        b_error |= parse_cqm( value, p->cqm_8ic, 64, p->b_mpeg2 );
     }
     OPT("cqm8p")
     {
         p->i_cqm_preset = X264_CQM_CUSTOM;
-        b_error |= parse_cqm( value, p->cqm_8py, 64 );
-        b_error |= parse_cqm( value, p->cqm_8pc, 64 );
+        b_error |= parse_cqm( value, p->cqm_8py, 64, p->b_mpeg2 );
+        b_error |= parse_cqm( value, p->cqm_8pc, 64, p->b_mpeg2 );
     }
     OPT("log")
         p->i_log_level = atoi(value);
@@ -1042,6 +1184,12 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
         p->b_fake_interlaced = atobool(value);
     OPT("frame-packing")
         p->i_frame_packing = atoi(value);
+    OPT("opencl")
+        p->b_opencl = atobool( value );
+    OPT("opencl-clbin")
+        p->psz_clbin_file = strdup( value );
+    OPT("opencl-device")
+        p->i_opencl_device = atoi( value );
     else
         return X264_PARAM_BAD_NAME;
 #undef OPT
@@ -1096,6 +1244,31 @@ static void x264_log_default( void *p_unused, int i_level, const char *psz_fmt, 
             break;
     }
     fprintf( stderr, "x264 [%s]: ", psz_prefix );
+    vfprintf( stderr, psz_fmt, arg );
+}
+
+static void x264_log_mpeg2( void *p_unused, int i_level, const char *psz_fmt, va_list arg )
+{
+    char *psz_prefix;
+    switch( i_level )
+    {
+        case X264_LOG_ERROR:
+            psz_prefix = "error";
+            break;
+        case X264_LOG_WARNING:
+            psz_prefix = "warning";
+            break;
+        case X264_LOG_INFO:
+            psz_prefix = "info";
+            break;
+        case X264_LOG_DEBUG:
+            psz_prefix = "debug";
+            break;
+        default:
+            psz_prefix = "unknown";
+            break;
+    }
+    fprintf( stderr, "x262 [%s]: ", psz_prefix );
     vfprintf( stderr, psz_fmt, arg );
 }
 
@@ -1179,17 +1352,14 @@ void x264_picture_clean( x264_picture_t *pic )
 void *x264_malloc( int i_size )
 {
     uint8_t *align_buf = NULL;
-#if SYS_MACOSX || (SYS_WINDOWS && ARCH_X86_64)
-    /* Mac OS X and Win x64 always returns 16 byte aligned memory */
-    align_buf = malloc( i_size );
-#elif HAVE_MALLOC_H
-    align_buf = memalign( 16, i_size );
+#if HAVE_MALLOC_H
+    align_buf = memalign( NATIVE_ALIGN, i_size );
 #else
-    uint8_t *buf = malloc( i_size + 15 + sizeof(void **) );
+    uint8_t *buf = malloc( i_size + (NATIVE_ALIGN-1) + sizeof(void **) );
     if( buf )
     {
-        align_buf = buf + 15 + sizeof(void **);
-        align_buf -= (intptr_t) align_buf & 15;
+        align_buf = buf + (NATIVE_ALIGN-1) + sizeof(void **);
+        align_buf -= (intptr_t) align_buf & (NATIVE_ALIGN-1);
         *( (void **) ( align_buf - sizeof(void **) ) ) = buf;
     }
 #endif
@@ -1205,7 +1375,7 @@ void x264_free( void *p )
 {
     if( p )
     {
-#if HAVE_MALLOC_H || SYS_MACOSX || (SYS_WINDOWS && ARCH_X86_64)
+#if HAVE_MALLOC_H
         free( p );
 #else
         free( *( ( ( void **) p ) - 1 ) );
@@ -1297,7 +1467,10 @@ char *x264_param2string( x264_param_t *p, int b_res )
     // FIXME speedcontrol stuff
 
     s += sprintf( s, "cabac=%d", p->b_cabac );
+    if( p->b_opencl )
+        s += sprintf( s, "opencl=%d", p->b_opencl );
     s += sprintf( s, " ref=%d", p->i_frame_reference );
+    s += sprintf( s, " mpeg2=%d", p->b_mpeg2 );
     s += sprintf( s, " deblock=%d:%d:%d", p->b_deblocking_filter,
                   p->i_deblocking_filter_alphac0, p->i_deblocking_filter_beta );
     s += sprintf( s, " analyse=%#x:%#x", p->analyse.intra, p->analyse.inter );
@@ -1320,10 +1493,14 @@ char *x264_param2string( x264_param_t *p, int b_res )
     s += sprintf( s, " sliced_threads=%d", p->b_sliced_threads );
     if( p->i_slice_count )
         s += sprintf( s, " slices=%d", p->i_slice_count );
+    if( p->i_slice_count_max )
+        s += sprintf( s, " slices_max=%d", p->i_slice_count_max );
     if( p->i_slice_max_size )
         s += sprintf( s, " slice_max_size=%d", p->i_slice_max_size );
     if( p->i_slice_max_mbs )
         s += sprintf( s, " slice_max_mbs=%d", p->i_slice_max_mbs );
+    if( p->i_slice_min_mbs )
+        s += sprintf( s, " slice_min_mbs=%d", p->i_slice_min_mbs );
     s += sprintf( s, " nr=%d", p->analyse.i_noise_reduction );
     s += sprintf( s, " decimate=%d", p->analyse.b_dct_decimate );
     s += sprintf( s, " interlaced=%s", p->b_interlaced ? p->b_tff ? "tff" : "bff" : p->b_fake_interlaced ? "fake" : "0" );

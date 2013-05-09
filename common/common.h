@@ -1,7 +1,7 @@
 /*****************************************************************************
  * common.h: misc common functions
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
@@ -40,6 +40,7 @@
 #define IS_DISPOSABLE(type) ( type == X264_TYPE_B )
 #define FIX8(f) ((int)(f*(1<<8)+.5))
 #define ALIGN(x,a) (((x)+((a)-1))&~((a)-1))
+#define ARRAY_ELEMS(a) ((sizeof(a))/(sizeof(a[0])))
 
 #define CHECKED_MALLOC( var, size )\
 do {\
@@ -53,6 +54,8 @@ do {\
     memset( var, 0, size );\
 } while( 0 )
 
+#define ARRAY_SIZE(array)  (sizeof(array)/sizeof(array[0]))
+
 #define X264_BFRAME_MAX 16
 #define X264_REF_MAX 16
 #define X264_THREAD_MAX 128
@@ -60,12 +63,15 @@ do {\
 #define X264_PCM_COST (FRAME_SIZE(256*BIT_DEPTH)+16)
 #define X264_LOOKAHEAD_MAX 250
 #define QP_BD_OFFSET (6*(BIT_DEPTH-8))
-#define QP_MAX_SPEC (51+QP_BD_OFFSET)
-#define QP_MAX (QP_MAX_SPEC+18)
+#define QP_MAX_SPEC_H264 (51+QP_BD_OFFSET)
+#define QP_MAX_SPEC_MPEG2 31
+#define QP_MAX_SPEC (MPEG2 ? QP_MAX_SPEC_MPEG2 : QP_MAX_SPEC_H264)
+#define QP_MAX (QP_MAX_SPEC_H264+18)
 #define QP_MAX_MAX (51+2*6+18)
+#define LAMBDA_MAX (91 << (BIT_DEPTH-8))
 #define PIXEL_MAX ((1 << BIT_DEPTH)-1)
 // arbitrary, but low because SATD scores are 1/4 normal
-#define X264_LOOKAHEAD_QP (12+QP_BD_OFFSET)
+#define X264_LOOKAHEAD_QP (MPEG2 ? 1 : 12+QP_BD_OFFSET)
 #define SPEC_QP(x) X264_MIN((x), QP_MAX_SPEC)
 
 // number of pixels (per thread) in progress at any given time.
@@ -81,6 +87,9 @@ do {\
 
 #define NALU_OVERHEAD 5 // startcode + NAL type costs 5 bytes per frame
 #define FILLER_OVERHEAD (NALU_OVERHEAD+1)
+#define STRUCTURE_OVERHEAD 4 // startcode
+
+#define LOG2_16(x) (31 - x264_clz((x)|1))
 
 /****************************************************************************
  * Includes
@@ -93,14 +102,29 @@ do {\
 #include <assert.h>
 #include <limits.h>
 
+#if HAVE_OPENCL
+#include "opencl.h"
+#endif
+
+/* MPEG-2 Support */
+#if HAVE_MPEG2
+#   define MPEG2 h->param.b_mpeg2
+#else
+#   define MPEG2 0
+#endif
+
 #if HAVE_INTERLACED
 #   define MB_INTERLACED h->mb.b_interlaced
-#   define SLICE_MBAFF h->sh.b_mbaff
 #   define PARAM_INTERLACED h->param.b_interlaced
+#   define SLICE_MBAFF h->sh.b_mbaff
+#   define MPEG2_MBAFF (PARAM_INTERLACED & MPEG2)
+#   define PLANE_MBAFF (SLICE_MBAFF | MPEG2_MBAFF)
 #else
 #   define MB_INTERLACED 0
-#   define SLICE_MBAFF 0
 #   define PARAM_INTERLACED 0
+#   define SLICE_MBAFF 0
+#   define MPEG2_MBAFF 0
+#   define PLANE_MBAFF 0
 #endif
 
 #ifdef CHROMA_FORMAT
@@ -202,6 +226,7 @@ static const uint8_t x264_scan8[16*3 + 3] =
 };
 
 #include "x264.h"
+#include "cabac.h"
 #include "bitstream.h"
 #include "set.h"
 #include "predict.h"
@@ -209,7 +234,6 @@ static const uint8_t x264_scan8[16*3 + 3] =
 #include "mc.h"
 #include "frame.h"
 #include "dct.h"
-#include "cabac.h"
 #include "quant.h"
 #include "cpu.h"
 #include "threadpool.h"
@@ -291,17 +315,6 @@ static ALWAYS_INLINE uint16_t x264_cabac_mvd_sum( uint8_t *mvdleft, uint8_t *mvd
     return amvd0 + (amvd1<<8);
 }
 
-static void ALWAYS_INLINE x264_predictor_roundclip( int16_t (*dst)[2], int16_t (*mvc)[2], int i_mvc, int mv_x_min, int mv_x_max, int mv_y_min, int mv_y_max )
-{
-    for( int i = 0; i < i_mvc; i++ )
-    {
-        int mx = (mvc[i][0] + 2) >> 2;
-        int my = (mvc[i][1] + 2) >> 2;
-        dst[i][0] = x264_clip3( mx, mv_x_min, mv_x_max );
-        dst[i][1] = x264_clip3( my, mv_y_min, mv_y_max );
-    }
-}
-
 extern const uint8_t x264_exp2_lut[64];
 extern const float x264_log2_lut[128];
 extern const float x264_log2_lz_lut[32];
@@ -345,6 +358,55 @@ enum sei_payload_type_e
     SEI_RECOVERY_POINT         = 6,
     SEI_DEC_REF_PIC_MARKING    = 7,
     SEI_FRAME_PACKING          = 45,
+};
+
+enum mpeg2_structure_type_e
+{
+    MPEG2_SEQ_HEADER           = 0xb0, // FIXME
+    MPEG2_USER_DATA,
+    MPEG2_SEQ_EXT,
+    MPEG2_SEQ_DISPLAY_EXT,
+    MPEG2_GOP_HEADER,
+    MPEG2_PICTURE_HEADER,
+    MPEG2_PICTURE_CODING_EXT,
+    MPEG2_PICTURE_DISPLAY_EXT,
+    MPEG2_QUANT_MATRIX_EXT,
+    MPEG2_COPYRIGHT_EXT,
+};
+
+enum mpeg2_start_code_e
+{
+    MPEG2_PICTURE_START_CODE    = 0x00,
+    MPEG2_USER_DATA_START_CODE  = 0xB2,
+    MPEG2_SEQ_HEADER_CODE       = 0xB3,
+    MPEG2_SEQ_ERROR_CODE        = 0xB4,
+    MPEG2_EXT_START_CODE        = 0xB5,
+    MPEG2_SEQ_END_CODE          = 0xB7,
+    MPEG2_GRP_START_CODE        = 0xB8,
+};
+
+static const uint8_t structure_to_start_code[] =
+{
+    [MPEG2_SEQ_HEADER]      = MPEG2_SEQ_HEADER_CODE,
+    [MPEG2_USER_DATA]       = MPEG2_USER_DATA_START_CODE,
+    [MPEG2_SEQ_EXT]         = MPEG2_EXT_START_CODE,
+    [MPEG2_SEQ_DISPLAY_EXT] = MPEG2_EXT_START_CODE,
+    [MPEG2_GOP_HEADER]      = MPEG2_GRP_START_CODE,
+    [MPEG2_PICTURE_HEADER]  = MPEG2_PICTURE_START_CODE,
+    [MPEG2_PICTURE_CODING_EXT] = MPEG2_EXT_START_CODE,
+    [MPEG2_PICTURE_DISPLAY_EXT] = MPEG2_EXT_START_CODE,
+    [MPEG2_QUANT_MATRIX_EXT]   = MPEG2_EXT_START_CODE,
+    [MPEG2_COPYRIGHT_EXT]      = MPEG2_EXT_START_CODE,
+};
+
+enum mpeg2_extension_id_e
+{
+    MPEG2_SEQ_EXT_ID          = 1,
+    MPEG2_SEQ_DISPLAY_EXT_ID  = 2,
+    MPEG2_QUANT_MATRIX_EXT_ID = 3,
+    MPEG2_COPYRIGHT_EXT_ID    = 4,
+    MPEG2_PIC_DISPLAY_EXT_ID  = 7,
+    MPEG2_PIC_CODING_EXT_ID   = 8,
 };
 
 typedef struct
@@ -578,6 +640,7 @@ struct x264_t
         int i_poc_last_open_gop;   /* Poc of the I frame of the last open-gop. The value
                                     * is only assigned during the period between that
                                     * I frame and the next P or I frame, else -1 */
+        int i_last_temporal_ref;   /* MPEG-2: Frame number of the first displayed frame in a GOP */
 
         int i_input;    /* Number of input frames already accepted */
 
@@ -615,11 +678,12 @@ struct x264_t
     /* Current MB DCT coeffs */
     struct
     {
-        ALIGNED_16( dctcoef luma16x16_dc[3][16] );
+        ALIGNED_N( dctcoef luma16x16_dc[3][16] );
         ALIGNED_16( dctcoef chroma_dc[2][8] );
         // FIXME share memory?
-        ALIGNED_16( dctcoef luma8x8[12][64] );
-        ALIGNED_16( dctcoef luma4x4[16*3][16] );
+        ALIGNED_N( dctcoef luma8x8[12][64] );
+        ALIGNED_N( dctcoef luma4x4[16*3][16] );
+        ALIGNED_N( dctcoef mpeg2_8x8[8][64] );
     } dct;
 
     /* MB table and cache for current frame/mb */
@@ -672,8 +736,7 @@ struct x264_t
         int     mv_miny_spel_row[3];
         int     mv_maxy_spel_row[3];
         /* Fullpel MV range for motion search */
-        int     mv_min_fpel[2];
-        int     mv_max_fpel[2];
+        ALIGNED_8( int16_t mv_limit_fpel[2][2] ); /* min_x, min_y, max_x, max_y */
         int     mv_miny_fpel_row[3];
         int     mv_maxy_fpel_row[3];
 
@@ -733,6 +796,15 @@ struct x264_t
         ALIGNED_4( uint8_t i_sub_partition[4] );
         int     b_transform_8x8;
 
+        /* MPEG-2 */
+        int     i_quant_scale_code;
+        int     i_intra_dc_predictor[8];
+        int     i_dct_dc_size[8];
+        int     i_dct_dc_diff[8];
+        int     i_bskip_type;
+        int16_t mvp[2][2][2];
+        int     i_cbp_chroma422;
+
         int     i_cbp_luma;
         int     i_cbp_chroma;
 
@@ -759,7 +831,7 @@ struct x264_t
 #define FENC_STRIDE 16
 #define FDEC_STRIDE 32
             ALIGNED_16( pixel fenc_buf[48*FENC_STRIDE] );
-            ALIGNED_16( pixel fdec_buf[52*FDEC_STRIDE] );
+            ALIGNED_N( pixel fdec_buf[52*FDEC_STRIDE] );
 
             /* i4x4 and i8x8 backup data, for skipping the encode stage when possible */
             ALIGNED_16( pixel i4x4_fdec_buf[16*16] );
@@ -776,8 +848,8 @@ struct x264_t
             ALIGNED_16( dctcoef fenc_dct4[16][16] );
 
             /* Psy RD SATD/SA8D scores cache */
-            ALIGNED_16( uint64_t fenc_hadamard_cache[9] );
-            ALIGNED_16( uint32_t fenc_satd_cache[32] );
+            ALIGNED_N( uint64_t fenc_hadamard_cache[9] );
+            ALIGNED_N( uint32_t fenc_satd_cache[32] );
 
             /* pointer over mb of the frame to be compressed */
             pixel *p_fenc[3]; /* y,u,v */
@@ -907,7 +979,8 @@ struct x264_t
 
     } stat;
 
-    /* 0 = luma 4x4, 1 = luma 8x8, 2 = chroma 4x4, 3 = chroma 8x8 */
+    /* H.264:  0 = luma 4x4, 1 = luma 8x8, 2 = chroma 4x4, 3 = chroma 8x8
+     * MPEG-2: 0 = luma 8x8, 1 = chroma 8x8 */
     udctcoef (*nr_offset)[64];
     uint32_t (*nr_residual_sum)[64];
     uint32_t *nr_count;
@@ -935,6 +1008,8 @@ struct x264_t
     x264_predict_t      predict_8x16c[4+3];
     x264_predict_8x8_filter_t predict_8x8_filter;
 
+    x264_predict_mpeg2_t      predict_8x8_mpeg2;
+
     x264_pixel_function_t pixf;
     x264_mc_functions_t   mc;
     x264_dct_function_t   dctf;
@@ -949,10 +1024,47 @@ struct x264_t
     struct visualize_t *visualize;
 #endif
     x264_lookahead_t *lookahead;
+
+#if HAVE_OPENCL
+    x264_opencl_t opencl;
+#endif
 };
 
 // included at the end because it needs x264_t
 #include "macroblock.h"
+
+static int ALWAYS_INLINE x264_predictor_roundclip( int16_t (*dst)[2], int16_t (*mvc)[2], int i_mvc, int16_t mv_limit[2][2], uint32_t pmv )
+{
+    int cnt = 0;
+    for( int i = 0; i < i_mvc; i++ )
+    {
+        int mx = (mvc[i][0] + 2) >> 2;
+        int my = (mvc[i][1] + 2) >> 2;
+        uint32_t mv = pack16to32_mask(mx, my);
+        if( !mv || mv == pmv ) continue;
+        dst[cnt][0] = x264_clip3( mx, mv_limit[0][0], mv_limit[1][0] );
+        dst[cnt][1] = x264_clip3( my, mv_limit[0][1], mv_limit[1][1] );
+        cnt++;
+    }
+    return cnt;
+}
+
+static int ALWAYS_INLINE x264_predictor_clip( int16_t (*dst)[2], int16_t (*mvc)[2], int i_mvc, int16_t mv_limit[2][2], uint32_t pmv )
+{
+    int cnt = 0;
+    int qpel_limit[4] = {mv_limit[0][0] << 2, mv_limit[0][1] << 2, mv_limit[1][0] << 2, mv_limit[1][1] << 2};
+    for( int i = 0; i < i_mvc; i++ )
+    {
+        uint32_t mv = M32( mvc[i] );
+        int mx = mvc[i][0];
+        int my = mvc[i][1];
+        if( !mv || mv == pmv ) continue;
+        dst[cnt][0] = x264_clip3( mx, qpel_limit[0], qpel_limit[2] );
+        dst[cnt][1] = x264_clip3( my, qpel_limit[1], qpel_limit[3] );
+        cnt++;
+    }
+    return cnt;
+}
 
 #if ARCH_X86 || ARCH_X86_64
 #include "x86/util.h"

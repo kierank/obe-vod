@@ -25,10 +25,12 @@ Configuration options:
   --system-libx264         use system libx264 instead of internal
   --enable-shared          build shared library
   --enable-static          build static library
+  --disable-opencl         disable OpenCL features
   --disable-gpl            disable GPL-only features
   --disable-thread         disable multithreaded encoding
   --enable-win32thread     use win32threads (windows only)
   --disable-interlaced     disable interlaced encoding support
+  --disable-mpeg2          disables MPEG-2 encoding support
   --enable-visualize       enable visualization (X11 only)
   --bit-depth=BIT_DEPTH    set output bit depth (8-10) [8]
   --chroma-format=FORMAT   output chroma format (420, 422, 444, all) [all]
@@ -46,7 +48,7 @@ Cross-compilation:
   --sysroot=SYSROOT        root of cross-build tree
 
 External library support:
-  --disable-avs            disable avisynth support (windows only)
+  --disable-avs            disable avisynth support
   --disable-swscale        disable swscale support
   --disable-lavf           disable libavformat support
   --disable-ffms           disable ffmpegsource support
@@ -270,6 +272,7 @@ thread="auto"
 swscale="auto"
 asm="auto"
 interlaced="yes"
+mpeg2="yes"
 debug="no"
 gprof="no"
 strip="no"
@@ -278,6 +281,7 @@ vis="no"
 bit_depth="8"
 chroma_format="all"
 compiler="GNU"
+opencl="yes"
 
 CFLAGS="$CFLAGS -Wall -I. -I\$(SRCPATH)"
 LDFLAGS="$LDFLAGS"
@@ -290,7 +294,7 @@ cross_prefix=""
 EXE=""
 
 # list of all preprocessor HAVE values we can define
-CONFIG_HAVE="MALLOC_H ALTIVEC ALTIVEC_H MMX ARMV6 ARMV6T2 NEON BEOSTHREAD POSIXTHREAD WIN32THREAD THREAD LOG2F VISUALIZE SWSCALE LAVF FFMS GPAC GF_MALLOC AVS GPL VECTOREXT INTERLACED CPU_COUNT LIBMPEGTS"
+CONFIG_HAVE="MALLOC_H ALTIVEC ALTIVEC_H MMX ARMV6 ARMV6T2 NEON BEOSTHREAD POSIXTHREAD WIN32THREAD THREAD LOG2F VISUALIZE SWSCALE LAVF FFMS GPAC GF_MALLOC AVS GPL VECTOREXT INTERLACED CPU_COUNT LIBMPEGTS MPEG2"
 
 # parse options
 
@@ -329,6 +333,9 @@ for opt do
             ;;
         --disable-interlaced)
             interlaced="no"
+            ;;
+        --disable-mpeg2)
+            mpeg2="no"
             ;;
         --disable-avs)
             avs="no"
@@ -385,6 +392,9 @@ for opt do
             ;;
         --host=*)
             host="$optarg"
+            ;;
+        --disable-opencl)
+            opencl="no"
             ;;
         --cross-prefix=*)
             cross_prefix="$optarg"
@@ -526,6 +536,13 @@ case $host_os in
         fi
         HAVE_GETOPT_LONG=0
         ;;
+    *qnx*)
+        SYS="QNX"
+        define HAVE_MALLOC_H
+        libm="-lm"
+        HAVE_GETOPT_LONG=0
+        CFLAGS="$CFLAGS -I\$(SRCPATH)/extras"
+        ;;
     *)
         die "Unknown system $host, edit the configure"
         ;;
@@ -533,6 +550,7 @@ esac
 
 LDFLAGS="$LDFLAGS $libm"
 
+aligned_stack=1
 case $host_cpu in
     i*86)
         ARCH="X86"
@@ -553,6 +571,7 @@ case $host_cpu in
                 # < 11 is completely incapable of keeping a mod16 stack
                 if cpp_check "" "" "__INTEL_COMPILER < 1100" ; then
                     define BROKEN_STACK_ALIGNMENT
+                    aligned_stack=0
                 # 11 <= x < 12 is capable of keeping a mod16 stack, but defaults to not doing so.
                 elif cpp_check "" "" "__INTEL_COMPILER < 1200" ; then
                     CFLAGS="$CFLAGS -falign-stack=assume-16-byte"
@@ -560,13 +579,14 @@ case $host_cpu in
                 # >= 12 defaults to a mod16 stack
             fi
             # icl on windows has no mod16 stack support
-            [ $SYS = WINDOWS ] && define BROKEN_STACK_ALIGNMENT
+            [ $SYS = WINDOWS ] && define BROKEN_STACK_ALIGNMENT && aligned_stack=0
         fi
         if [ "$SYS" = MACOSX ]; then
             ASFLAGS="$ASFLAGS -f macho -DPREFIX"
         elif [ "$SYS" = WINDOWS -o "$SYS" = CYGWIN ]; then
             ASFLAGS="$ASFLAGS -f win32 -DPREFIX"
             LDFLAGS="$LDFLAGS -Wl,--large-address-aware"
+            [ $compiler = GNU ] && LDFLAGS="$LDFLAGS -Wl,--nxcompat -Wl,--dynamicbase"
             [ $compiler = GNU ] && RCFLAGS="--target=pe-i386 $RCFLAGS"
         else
             ASFLAGS="$ASFLAGS -f elf"
@@ -586,6 +606,7 @@ case $host_cpu in
             ASFLAGS="$ASFLAGS -f win32 -m amd64"
             # only the GNU toolchain is inconsistent in prefixing function names with _
             [ $compiler = GNU ] && cc_check "" "-S" && grep -q "_main:" conftest && ASFLAGS="$ASFLAGS -DPREFIX"
+            [ $compiler = GNU ] && LDFLAGS="$LDFLAGS -Wl,--nxcompat -Wl,--dynamicbase"
             [ $compiler = GNU ] && RCFLAGS="--target=pe-x86-64 $RCFLAGS"
         else
             ASFLAGS="$ASFLAGS -f elf -m amd64"
@@ -653,6 +674,7 @@ case $host_cpu in
         ARCH="$(echo $host_cpu | tr a-z A-Z)"
         ;;
 esac
+ASFLAGS="$ASFLAGS -DHAVE_ALIGNED_STACK=${aligned_stack}"
 
 if [ $SYS = WINDOWS ]; then
     if ! rc_check "0 RCDATA {0}" ; then
@@ -689,10 +711,10 @@ if [ $shared = yes -a \( $ARCH = "X86_64" -o $ARCH = "PPC" -o $ARCH = "ALPHA" -o
 fi
 
 if [ $asm = auto -a \( $ARCH = X86 -o $ARCH = X86_64 \) ] ; then
-    if ! as_check "vpperm xmm0, xmm0, xmm0, xmm0" ; then
+    if ! as_check "vpmovzxwd ymm0, xmm0" ; then
         VER=`($AS --version || echo no assembler) 2>/dev/null | head -n 1`
         echo "Found $VER"
-        echo "Minimum version is yasm-1.0.0"
+        echo "Minimum version is yasm-1.2.0"
         echo "If you really want to compile without asm, configure with --disable-asm."
         exit 1
     fi
@@ -772,6 +794,9 @@ if [ "$thread" = "auto" ]; then
                 thread="win32"
             fi
             ;;
+        QNX)
+            cc_check pthread.h -lc && thread="posix" && libpthread="-lc"
+            ;;
         *)
             cc_check pthread.h -lpthread && thread="posix" && libpthread="-lpthread"
             ;;
@@ -826,6 +851,8 @@ if [ "$swscale" = "auto" ] ; then
         fi
     fi
 fi
+
+
 
 if [ "$lavf" = "auto" ] ; then
     lavf="no"
@@ -909,7 +936,7 @@ if [ "$gpac" = "auto" ] ; then
 fi
 if [ "$gpac" = "yes" ] ; then
     define HAVE_GPAC
-    if cc_check gpac/isomedia.h "-Werror $GPAC_LIBS" "gf_malloc(1); gf_free(NULL);" ; then
+    if cc_check gpac/isomedia.h "-Werror $GPAC_LIBS" "void *p; p = gf_malloc(1); gf_free(p);" ; then
         define HAVE_GF_MALLOC
     fi
     LDFLAGSCLI="$GPAC_LIBS $LDFLAGSCLI"
@@ -932,8 +959,16 @@ if [ "$avs" = "auto" ] ; then
     avs="no"
     # cygwin can use avisynth if it can use LoadLibrary
     if [ $SYS = WINDOWS ] || ([ $SYS = CYGWIN ] && cc_check windows.h "" "LoadLibrary(0);") ; then
-        avs="yes"
+        avs="avisynth"
         define HAVE_AVS
+        define USE_AVXSYNTH 0
+    elif [ "$SYS" = "LINUX" -o "$SYS" = "MACOSX" ] ; then
+    # AvxSynth currently only supports Linux and OSX
+        avs="avxsynth"
+        define HAVE_AVS
+        define USE_AVXSYNTH 1
+        AVS_LIBS="-ldl"
+        LDFLAGSCLI="$AVS_LIBS $LDFLAGSCLI"
     fi
 fi
 
@@ -993,6 +1028,8 @@ fi
 if [ "$bit_depth" -gt "8" ]; then
     define HIGH_BIT_DEPTH
     ASFLAGS="$ASFLAGS -DHIGH_BIT_DEPTH=1"
+    opencl="no"
+    mpeg2="no"
 else
     ASFLAGS="$ASFLAGS -DHIGH_BIT_DEPTH=0"
 fi
@@ -1001,11 +1038,17 @@ if [ "$chroma_format" != "all" ]; then
     define CHROMA_FORMAT CHROMA_$chroma_format
 fi
 
+if [ "$chroma_format" = "444" ]; then
+    mpeg2="no"
+fi
+
 ASFLAGS="$ASFLAGS -DBIT_DEPTH=$bit_depth"
 
 [ $gpl = yes ] && define HAVE_GPL && x264_gpl=1 || x264_gpl=0
 
 [ $interlaced = yes ] && define HAVE_INTERLACED && x264_interlaced=1 || x264_interlaced=0
+
+[ $mpeg2 = yes ] && define HAVE_MPEG2 && x264_mpeg2=1 || x264_mpeg2=0
 
 #define undefined vars as 0
 for var in $CONFIG_HAVE; do
@@ -1063,6 +1106,7 @@ cat > x264_config.h << EOF
 #define X264_BIT_DEPTH     $bit_depth
 #define X264_GPL           $x264_gpl
 #define X264_INTERLACED    $x264_interlaced
+#define X264_MPEG2         $x264_mpeg2
 #define X264_CHROMA_FORMAT $config_chroma_format
 EOF
 
@@ -1093,6 +1137,7 @@ RC=$RC
 RCFLAGS=$RCFLAGS
 EXE=$EXE
 HAVE_GETOPT_LONG=$HAVE_GETOPT_LONG
+HAVE_MPEG2=$x264_mpeg2
 DEVNULL=$DEVNULL
 PROF_GEN_CC=$PROF_GEN_CC
 PROF_GEN_LD=$PROF_GEN_LD
@@ -1100,9 +1145,63 @@ PROF_USE_CC=$PROF_USE_CC
 PROF_USE_LD=$PROF_USE_LD
 EOF
 
+if [[ $host_os != mingw* ]]; then
+    # OpenCL support is only well tested on Windows/MinGW.  If you
+    # wish to try it on an unsupported platform, swap the lines
+    # below.  If OpenCL breaks, you get to keep both halves
+    #opencl="yes"
+    opencl="no"
+fi
+if [ "$opencl" = "yes" ]; then
+    log_check "looking for perl"
+    output=$(perl -v)
+    if [ "$output" = "" ]; then
+        echo 'OpenCL support requires perl to compile.'
+        echo 'use --disable-opencl to compile without OpenCL.'
+        exit 1
+    elif [[ $cross_prefix != ""  &&  $host_os == mingw* ]] ; then
+        if cc_check "CL/cl.h" "-lOpenCL"; then
+            echo 'HAVE_OPENCL=yes' >> config.mak
+            echo 'OPENCL_LIB=OpenCL' >> config.mak
+            echo "OPENCL_INC_DIR=." >> config.mak
+            echo "OPENCL_LIB_DIR=." >> config.mak
+            define HAVE_OPENCL
+        else
+            opencl="no"
+        fi
+    elif [ "$CUDA_PATH" != "" ]; then
+        echo 'HAVE_OPENCL=yes' >> config.mak
+        echo 'OPENCL_LIB=OpenCL' >> config.mak
+        echo 'OPENCL_INC_DIR=$(CUDA_PATH)include' >> config.mak
+        if [ "$ARCH" = "X86" ]; then
+            echo 'OPENCL_LIB_DIR=$(CUDA_PATH)lib/Win32' >> config.mak
+        else
+            echo 'OPENCL_LIB_DIR=$(CUDA_PATH)lib/x64' >> config.mak
+        fi
+        define HAVE_OPENCL
+    elif [ -e "$AMDAPPSDKROOT/include/CL/cl.h" ]; then
+        if [[ $host_os = mingw* ]]; then
+            app_path=`echo "/$AMDAPPSDKROOT" | sed 's/\\\/\//g' | sed 's/://'`
+        else
+            app_path='$(AMDAPPSDKROOT)'
+       fi
+        echo 'HAVE_OPENCL=yes' >> config.mak
+        echo 'OPENCL_LIB=OpenCL' >> config.mak
+        echo OPENCL_INC_DIR=$app_path/include >> config.mak
+        if [ "$ARCH" = "X86" ]; then
+            echo OPENCL_LIB_DIR=$app_path/lib/x86 >> config.mak
+        else
+            echo OPENCL_LIB_DIR=$app_path/lib/x86_64 >> config.mak
+        fi
+        define HAVE_OPENCL
+    else
+        opencl="no"
+    fi
+fi
+
 if [ $compiler = ICL ]; then
     echo '%.o: %.c' >> config.mak
-    echo '	$(CC) $(CFLAGS) -c -Fo$@ $<' >> config.mak
+    echo '  $(CC) $(CFLAGS) -c -Fo$@ $<' >> config.mak
 fi
 
 if [ "$cli" = "yes" ]; then
@@ -1195,6 +1294,7 @@ shared:        $shared
 static:        $static
 asm:           $asm
 interlaced:    $interlaced
+mpeg2:         $mpeg2
 avs:           $avs
 lavf:          $lavf
 ffms:          $ffms
@@ -1210,6 +1310,7 @@ PIC:           $pic
 visualize:     $vis
 bit depth:     $bit_depth
 chroma format: $chroma_format
+opencl:        $opencl
 EOF
 
 echo >> config.log

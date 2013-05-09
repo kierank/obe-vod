@@ -1,7 +1,7 @@
 /*****************************************************************************
  * macroblock.h: macroblock encoding
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -32,14 +32,21 @@
 extern const int x264_lambda2_tab[QP_MAX_MAX+1];
 extern const uint16_t x264_lambda_tab[QP_MAX_MAX+1];
 
+/* MPEG-2 */
+extern const int x264_lambda2_tab_exp_mpeg2[QP_MAX_MAX+1];
+extern const uint16_t x264_lambda_tab_exp_mpeg2[QP_MAX_MAX+1];
+extern const int x264_lambda2_tab_lin_mpeg2[QP_MAX_MAX+1];
+extern const uint16_t x264_lambda_tab_lin_mpeg2[QP_MAX_MAX+1];
+
 void x264_rdo_init( void );
 
 int x264_macroblock_probe_skip( x264_t *h, int b_bidir );
+int x264_macroblock_probe_skip_mpeg2( x264_t *h, int b_bidir );
 
 #define x264_macroblock_probe_pskip( h )\
-    x264_macroblock_probe_skip( h, 0 )
+    ( MPEG2 ? x264_macroblock_probe_skip_mpeg2( h, 0 ) : x264_macroblock_probe_skip( h, 0 ) )
 #define x264_macroblock_probe_bskip( h )\
-    x264_macroblock_probe_skip( h, 1 )
+    ( MPEG2 ? x264_macroblock_probe_skip_mpeg2( h, 1 ) : x264_macroblock_probe_skip( h, 1 ) )
 
 void x264_predict_lossless_4x4( x264_t *h, pixel *p_dst, int p, int idx, int i_mode );
 void x264_predict_lossless_8x8( x264_t *h, pixel *p_dst, int p, int idx, int i_mode, pixel edge[36] );
@@ -49,6 +56,8 @@ void x264_predict_lossless_chroma( x264_t *h, int i_mode );
 void x264_macroblock_encode      ( x264_t *h );
 void x264_macroblock_write_cabac ( x264_t *h, x264_cabac_t *cb );
 void x264_macroblock_write_cavlc ( x264_t *h );
+
+void x264_macroblock_write_vlc_mpeg2( x264_t *h );
 
 void x264_macroblock_encode_p8x8( x264_t *h, int i8 );
 void x264_macroblock_encode_p4x4( x264_t *h, int i4 );
@@ -104,12 +113,16 @@ do\
     M32( &h->mb.cache.non_zero_count[x264_scan8[16*p+10]] ) = 0;\
 } while(0)
 
+/* A special for loop that iterates branchlessly over each set
+ * bit in a 4-bit input. */
+#define FOREACH_BIT(idx,start,mask) for( int idx = start, msk = mask, skip; msk && (skip = x264_ctz_4bit(msk), idx += skip, msk >>= skip+1, 1); idx++ )
+
 static ALWAYS_INLINE void x264_mb_encode_i4x4( x264_t *h, int p, int idx, int i_qp, int i_mode, int b_predict )
 {
     int nz;
     pixel *p_src = &h->mb.pic.p_fenc[p][block_idx_xy_fenc[idx]];
     pixel *p_dst = &h->mb.pic.p_fdec[p][block_idx_xy_fdec[idx]];
-    ALIGNED_ARRAY_16( dctcoef, dct4x4,[16] );
+    ALIGNED_ARRAY_N( dctcoef, dct4x4,[16] );
 
     if( b_predict )
     {
@@ -147,7 +160,7 @@ static ALWAYS_INLINE void x264_mb_encode_i8x8( x264_t *h, int p, int idx, int i_
     int nz;
     pixel *p_src = &h->mb.pic.p_fenc[p][8*x + 8*y*FENC_STRIDE];
     pixel *p_dst = &h->mb.pic.p_fdec[p][8*x + 8*y*FDEC_STRIDE];
-    ALIGNED_ARRAY_16( dctcoef, dct8x8,[64] );
+    ALIGNED_ARRAY_N( dctcoef, dct8x8,[64] );
     ALIGNED_ARRAY_32( pixel, edge_buf,[36] );
 
     if( b_predict )

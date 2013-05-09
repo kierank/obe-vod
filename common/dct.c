@@ -1,7 +1,7 @@
 /*****************************************************************************
  * dct.c: transform and zigzag
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -99,6 +99,33 @@ const uint32_t x264_dct8_weight2_tab[64] = {
 };
 #undef W
 
+#define W(i) (i==0 ? FIX8(0.25) :0)
+const uint32_t x264_mpeg2_weight_tab[64] = {
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0)
+};
+#undef W
+
+#define W(i) (i==0 ? FIX8(0.015625) :0)
+const uint32_t x264_mpeg2_weight2_tab[64] = {
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0),
+    W(0), W(0), W(0), W(0),  W(0), W(0), W(0), W(0)
+};
+#undef W
 
 static void dct4x4dc( dctcoef d[16] )
 {
@@ -526,11 +553,342 @@ static void add16x16_idct_dc( pixel *p_dst, dctcoef dct[16] )
     }
 }
 
+/****************************************************************************
+ * 8x8 DCT transforms (for MPEG-2)
+ * These algorithms are part of the Independent JPEG Group's software.
+ * Copyright (C) 1991-1996, Thomas G. Lane.
+ ****************************************************************************/
+
+#define RIGHT_SHIFT(x, n) ((x) >> (n))
+#define DESCALE(x, n)  RIGHT_SHIFT((x) + (1 << ((n) - 1)), n)
+
+#define CONST_BITS 13
+#define PASS1_BITS  4
+
+#define FIX_0_298631336  ((int32_t)  2446)      /* FIX(0.298631336) */
+#define FIX_0_390180644  ((int32_t)  3196)      /* FIX(0.390180644) */
+#define FIX_0_541196100  ((int32_t)  4433)      /* FIX(0.541196100) */
+#define FIX_0_765366865  ((int32_t)  6270)      /* FIX(0.765366865) */
+#define FIX_0_899976223  ((int32_t)  7373)      /* FIX(0.899976223) */
+#define FIX_1_175875602  ((int32_t)  9633)      /* FIX(1.175875602) */
+#define FIX_1_501321110  ((int32_t)  12299)     /* FIX(1.501321110) */
+#define FIX_1_847759065  ((int32_t)  15137)     /* FIX(1.847759065) */
+#define FIX_1_961570560  ((int32_t)  16069)     /* FIX(1.961570560) */
+#define FIX_2_053119869  ((int32_t)  16819)     /* FIX(2.053119869) */
+#define FIX_2_562915447  ((int32_t)  20995)     /* FIX(2.562915447) */
+#define FIX_3_072711026  ((int32_t)  25172)     /* FIX(3.072711026) */
+
+static inline void jpeg_fdct_islow( dctcoef *data )
+{
+    int_fast32_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
+    int_fast32_t tmp10, tmp11, tmp12, tmp13;
+    int_fast32_t z1, z2, z3, z4, z5;
+    dctcoef *dataptr;
+
+    /* Pass 1: process rows. */
+    /* Note results are scaled up by sqrt(8) compared to a true DCT; */
+    /* furthermore, we scale the results by 2**PASS1_BITS. */
+
+    dataptr = data;
+    for( int i = 0; i < 8; i++ )
+    {
+        tmp0 = dataptr[0] + dataptr[7];
+        tmp7 = dataptr[0] - dataptr[7];
+        tmp1 = dataptr[1] + dataptr[6];
+        tmp6 = dataptr[1] - dataptr[6];
+        tmp2 = dataptr[2] + dataptr[5];
+        tmp5 = dataptr[2] - dataptr[5];
+        tmp3 = dataptr[3] + dataptr[4];
+        tmp4 = dataptr[3] - dataptr[4];
+
+        /* Even part per LL&M figure 1 --- note that published figure is faulty;
+         * rotator "sqrt(2)*c1" should be "sqrt(2)*c6".
+         */
+
+        tmp10 = tmp0 + tmp3;
+        tmp13 = tmp0 - tmp3;
+        tmp11 = tmp1 + tmp2;
+        tmp12 = tmp1 - tmp2;
+
+        dataptr[0] = (dctcoef) ((tmp10 + tmp11) << PASS1_BITS);
+        dataptr[4] = (dctcoef) ((tmp10 - tmp11) << PASS1_BITS);
+
+        z1 = (tmp12 + tmp13) * FIX_0_541196100;
+        dataptr[2] = (dctcoef) DESCALE(z1 + tmp13 *   FIX_0_765366865,  CONST_BITS - PASS1_BITS);
+        dataptr[6] = (dctcoef) DESCALE(z1 + tmp12 * (-FIX_1_847759065), CONST_BITS - PASS1_BITS);
+
+        /* Odd part per figure 8 --- note paper omits factor of sqrt(2).
+         * cK represents cos(K*pi/16).
+         * i0..i3 in the paper are tmp4..tmp7 here.
+         */
+
+        z1 = tmp4 + tmp7;
+        z2 = tmp5 + tmp6;
+        z3 = tmp4 + tmp6;
+        z4 = tmp5 + tmp7;
+        z5 = (z3 + z4) * FIX_1_175875602; /* sqrt(2) * c3 */
+
+        tmp4 *=  FIX_0_298631336; /* sqrt(2) * (-c1+c3+c5-c7 ) */
+        tmp5 *=  FIX_2_053119869; /* sqrt(2) * ( c1+c3-c5+c7 ) */
+        tmp6 *=  FIX_3_072711026; /* sqrt(2) * ( c1+c3+c5-c7 ) */
+        tmp7 *=  FIX_1_501321110; /* sqrt(2) * ( c1+c3-c5-c7 ) */
+        z1   *= -FIX_0_899976223; /* sqrt(2) * ( c7-c3 ) */
+        z2   *= -FIX_2_562915447; /* sqrt(2) * (-c1-c3 ) */
+        z3   *= -FIX_1_961570560; /* sqrt(2) * (-c3-c5 ) */
+        z4   *= -FIX_0_390180644; /* sqrt(2) * ( c5-c3 ) */
+
+        z3 += z5;
+        z4 += z5;
+
+        dataptr[7] = (dctcoef) DESCALE(tmp4 + z1 + z3, CONST_BITS-PASS1_BITS);
+        dataptr[5] = (dctcoef) DESCALE(tmp5 + z2 + z4, CONST_BITS-PASS1_BITS);
+        dataptr[3] = (dctcoef) DESCALE(tmp6 + z2 + z3, CONST_BITS-PASS1_BITS);
+        dataptr[1] = (dctcoef) DESCALE(tmp7 + z1 + z4, CONST_BITS-PASS1_BITS);
+
+        dataptr += 8;         /* advance pointer to next row */
+    }
+
+    /* Pass 2: process columns.
+    * We remove the PASS1_BITS scaling, but leave the results scaled up
+    * by an overall factor of 8.
+    */
+
+    dataptr = data;
+    for( int i = 0; i < 8; i++ )
+    {
+        tmp0 = dataptr[0]  + dataptr[56];
+        tmp7 = dataptr[0]  - dataptr[56];
+        tmp1 = dataptr[8]  + dataptr[48];
+        tmp6 = dataptr[8]  - dataptr[48];
+        tmp2 = dataptr[16] + dataptr[40];
+        tmp5 = dataptr[16] - dataptr[40];
+        tmp3 = dataptr[24] + dataptr[32];
+        tmp4 = dataptr[24] - dataptr[32];
+
+        /* Even part per LL&M figure 1 --- note that published figure is faulty;
+         * rotator "sqrt(2)*c1" should be "sqrt(2)*c6".
+         */
+
+        tmp10 = tmp0 + tmp3;
+        tmp13 = tmp0 - tmp3;
+        tmp11 = tmp1 + tmp2;
+        tmp12 = tmp1 - tmp2;
+
+        dataptr[0]  = DESCALE(tmp10 + tmp11, PASS1_BITS);
+        dataptr[32] = DESCALE(tmp10 - tmp11, PASS1_BITS);
+
+        z1 = (tmp12 + tmp13) * FIX_0_541196100;
+        dataptr[16] = DESCALE(z1 + tmp13 *   FIX_0_765366865,  CONST_BITS + PASS1_BITS);
+        dataptr[48] = DESCALE(z1 + tmp12 * (-FIX_1_847759065), CONST_BITS + PASS1_BITS);
+
+        /* Odd part per figure 8 --- note paper omits factor of sqrt(2).
+         * cK represents cos(K*pi/16).
+         * i0..i3 in the paper are tmp4..tmp7 here.
+         */
+
+        z1 = tmp4 + tmp7;
+        z2 = tmp5 + tmp6;
+        z3 = tmp4 + tmp6;
+        z4 = tmp5 + tmp7;
+        z5 = (z3 + z4) * FIX_1_175875602; /* sqrt(2) * c3 */
+
+        tmp4 *=  FIX_0_298631336; /* sqrt(2) * (-c1+c3+c5-c7 ) */
+        tmp5 *=  FIX_2_053119869; /* sqrt(2) * ( c1+c3-c5+c7 ) */
+        tmp6 *=  FIX_3_072711026; /* sqrt(2) * ( c1+c3+c5-c7 ) */
+        tmp7 *=  FIX_1_501321110; /* sqrt(2) * ( c1+c3-c5-c7 ) */
+        z1   *= -FIX_0_899976223; /* sqrt(2) * ( c7-c3 ) */
+        z2   *= -FIX_2_562915447; /* sqrt(2) * (-c1-c3 ) */
+        z3   *= -FIX_1_961570560; /* sqrt(2) * (-c3-c5 ) */
+        z4   *= -FIX_0_390180644; /* sqrt(2) * ( c5-c3 ) */
+
+        z3 += z5;
+        z4 += z5;
+
+        dataptr[56] = (dctcoef) DESCALE(tmp4 + z1 + z3, CONST_BITS + PASS1_BITS);
+        dataptr[40] = (dctcoef) DESCALE(tmp5 + z2 + z4, CONST_BITS + PASS1_BITS);
+        dataptr[24] = (dctcoef) DESCALE(tmp6 + z2 + z3, CONST_BITS + PASS1_BITS);
+        dataptr[8]  = (dctcoef) DESCALE(tmp7 + z1 + z4, CONST_BITS + PASS1_BITS);
+
+        dataptr++; /* advance pointer to next column */
+    }
+
+    /* transpose to match zigzag and cqm */
+    for( int i = 0; i < 8; i++ )
+        for( int j = 0; j < i; j++ )
+            XCHG( dctcoef, data[8*i+j], data[8*j+i] );
+}
+
+#define W1 2841 /* 2048*sqrt(2)*cos(1*pi/16) */
+#define W2 2676 /* 2048*sqrt(2)*cos(2*pi/16) */
+#define W3 2408 /* 2048*sqrt(2)*cos(3*pi/16) */
+#define W5 1609 /* 2048*sqrt(2)*cos(5*pi/16) */
+#define W6 1108 /* 2048*sqrt(2)*cos(6*pi/16) */
+#define W7 565  /* 2048*sqrt(2)*cos(7*pi/16) */
+
+static short iclip[1024]; /* clipping table */
+static short *iclp;
+
+static void x264_idct_init_mpeg2( void )
+{
+    iclp = iclip + 512;
+    for( int i = -512; i < 512; i++ )
+        iclp[i] = (i < -256) ? -256 : ((i > 255) ? 255 : i);
+}
+
+static void idctrow( dctcoef *blk )
+{
+    int_fast32_t X0, X1, X2, X3, X4, X5, X6, X7, X8;
+
+    if( !( (X1 = blk[4] << 11) | (X2 = blk[6]) | (X3 = blk[2]) |
+           (X4 = blk[1])       | (X5 = blk[7]) | (X6 = blk[5]) | (X7 = blk[3]) ) )
+    {
+        blk[0] = blk[1] = blk[2] = blk[3] = blk[4] = blk[5] = blk[6] =
+        blk[7] = blk[0] << 3;
+        return;
+    }
+
+    X0 = (blk[0] << 11) + 128; /* for proper rounding in the fourth stage  */
+
+    /* first stage */
+    X8 = W7 * (X4 + X5);
+    X4 = X8 + (W1 - W7) * X4;
+    X5 = X8 - (W1 + W7) * X5;
+    X8 = W3 * (X6 + X7);
+    X6 = X8 - (W3 - W5) * X6;
+    X7 = X8 - (W3 + W5) * X7;
+
+    /* second stage */
+    X8 = X0 + X1;
+    X0 -= X1;
+    X1 = W6 * (X3 + X2);
+    X2 = X1 - (W2 + W6) * X2;
+    X3 = X1 + (W2 - W6) * X3;
+    X1 = X4 + X6;
+    X4 -= X6;
+    X6 = X5 + X7;
+    X5 -= X7;
+
+    /* third stage */
+    X7 = X8 + X3;
+    X8 -= X3;
+    X3 = X0 + X2;
+    X0 -= X2;
+    X2 = (181 * (X4 + X5) + 128) >> 8;
+    X4 = (181 * (X4 - X5) + 128) >> 8;
+
+    /* fourth stage */
+    blk[0] = (X7 + X1) >> 8;
+    blk[1] = (X3 + X2) >> 8;
+    blk[2] = (X0 + X4) >> 8;
+    blk[3] = (X8 + X6) >> 8;
+    blk[4] = (X8 - X6) >> 8;
+    blk[5] = (X0 - X4) >> 8;
+    blk[6] = (X3 - X2) >> 8;
+    blk[7] = (X7 - X1) >> 8;
+}
+
+static void idctcol( dctcoef *blk )
+{
+    int_fast32_t X0, X1, X2, X3, X4, X5, X6, X7, X8;
+
+    /* shortcut */
+    if( !( (X1 = (blk[8 * 4] << 8)) | (X2 = blk[8 * 6]) |
+           (X3 =  blk[8 * 2])       | (X4 = blk[8 * 1]) |
+           (X5 =  blk[8 * 7])       | (X6 = blk[8 * 5]) | (X7 = blk[8 * 3]) ) )
+    {
+        blk[8 * 0] = blk[8 * 1] = blk[8 * 2] =
+        blk[8 * 3] = blk[8 * 4] = blk[8 * 5] = 
+        blk[8 * 6] = blk[8 * 7] = iclp[(blk[8 * 0] + 32) >> 6];
+        return;
+    }
+
+    X0 = (blk[8 * 0] << 8) + 8192;
+
+    /* first stage */
+    X8 = W7 * (X4 + X5) + 4;
+    X4 = (X8 + (W1 - W7) * X4) >> 3;
+    X5 = (X8 - (W1 + W7) * X5) >> 3;
+    X8 = W3 * (X6 + X7) + 4;
+    X6 = (X8 - (W3 - W5) * X6) >> 3;
+    X7 = (X8 - (W3 + W5) * X7) >> 3;
+
+    /* second stage */
+    X8 = X0 + X1;
+    X0 -= X1;
+    X1 = W6 * (X3 + X2) + 4;
+    X2 = (X1 - (W2 + W6) * X2) >> 3;
+    X3 = (X1 + (W2 - W6) * X3) >> 3;
+    X1 = X4 + X6;
+    X4 -= X6;
+    X6 = X5 + X7;
+    X5 -= X7;
+
+    /* third stage */
+    X7 = X8 + X3;
+    X8 -= X3;
+    X3 = X0 + X2;
+    X0 -= X2;
+    X2 = (181 * (X4 + X5) + 128) >> 8;
+    X4 = (181 * (X4 - X5) + 128) >> 8;
+
+    /* fourth stage */
+    blk[8 * 0] = iclp[(X7 + X1) >> 14];
+    blk[8 * 1] = iclp[(X3 + X2) >> 14];
+    blk[8 * 2] = iclp[(X0 + X4) >> 14];
+    blk[8 * 3] = iclp[(X8 + X6) >> 14];
+    blk[8 * 4] = iclp[(X8 - X6) >> 14];
+    blk[8 * 5] = iclp[(X0 - X4) >> 14];
+    blk[8 * 6] = iclp[(X3 - X2) >> 14];
+    blk[8 * 7] = iclp[(X7 - X1) >> 14];
+}
+
+static void add8x8_idct_mpeg2( pixel *p_dst, dctcoef dct[64] )
+{
+    dctcoef tmp[64];
+
+    /* transpose to match zigzag and cqm */
+    for( int i = 0; i < 8; i++ )
+        for( int j = 0; j < 8; j++ )
+            tmp[i * 8 + j] = dct[j * 8 + i];
+
+    for( int i = 0; i < 8; i++ )
+        idctrow( tmp + i * 8 );
+
+    for( int i = 0; i < 8; i++ )
+        idctcol( tmp + i );
+
+    for( int i = 0; i < 8; i++ )
+        for( int j = 0; j < 8; j++ )
+            p_dst[i*FDEC_STRIDE + j] = 
+                x264_clip_pixel( p_dst[i*FDEC_STRIDE + j] + tmp[i*8 + j] );
+}
+
+static void add16x16_idct_mpeg2( pixel *p_dst, dctcoef dct[4][64] )
+{
+    add8x8_idct_mpeg2( &p_dst[0],               dct[0] );
+    add8x8_idct_mpeg2( &p_dst[8],               dct[1] );
+    add8x8_idct_mpeg2( &p_dst[8*FDEC_STRIDE+0], dct[2] );
+    add8x8_idct_mpeg2( &p_dst[8*FDEC_STRIDE+8], dct[3] );
+}
+
+static void sub8x8_dct_mpeg2( dctcoef dct[64], pixel *pix1, pixel *pix2 )
+{
+    pixel_sub_wxh( dct, 8, pix1, FENC_STRIDE, pix2, FDEC_STRIDE );
+    jpeg_fdct_islow( dct );
+}
+
+static void sub16x16_dct_mpeg2( dctcoef dct[4][64], pixel *pix1, pixel *pix2 )
+{
+    sub8x8_dct_mpeg2( dct[0], &pix1[0],               &pix2[0] );
+    sub8x8_dct_mpeg2( dct[1], &pix1[8],               &pix2[8] );
+    sub8x8_dct_mpeg2( dct[2], &pix1[8*FENC_STRIDE+0], &pix2[8*FDEC_STRIDE+0] );
+    sub8x8_dct_mpeg2( dct[3], &pix1[8*FENC_STRIDE+8], &pix2[8*FDEC_STRIDE+8] );
+}
 
 /****************************************************************************
  * x264_dct_init:
  ****************************************************************************/
-void x264_dct_init( int cpu, x264_dct_function_t *dctf )
+void x264_dct_init( int cpu, x264_dct_function_t *dctf, int b_mpeg2 )
 {
     dctf->sub4x4_dct    = sub4x4_dct;
     dctf->add4x4_idct   = add4x4_idct;
@@ -640,23 +998,32 @@ void x264_dct_init( int cpu, x264_dct_function_t *dctf )
         dctf->add8x8_idct8  = x264_add8x8_idct8_sse2;
         dctf->add16x16_idct8= x264_add16x16_idct8_sse2;
 
-        dctf->sub8x8_dct    = x264_sub8x8_dct_sse2;
-        dctf->sub16x16_dct  = x264_sub16x16_dct_sse2;
-        dctf->add8x8_idct   = x264_add8x8_idct_sse2;
-        dctf->add16x16_idct = x264_add16x16_idct_sse2;
-        dctf->add16x16_idct_dc = x264_add16x16_idct_dc_sse2;
+        if( !(cpu&X264_CPU_SSE2_IS_SLOW) )
+        {
+            dctf->sub8x8_dct    = x264_sub8x8_dct_sse2;
+            dctf->sub16x16_dct  = x264_sub16x16_dct_sse2;
+            dctf->add8x8_idct   = x264_add8x8_idct_sse2;
+            dctf->add16x16_idct = x264_add16x16_idct_sse2;
+            dctf->add16x16_idct_dc = x264_add16x16_idct_dc_sse2;
+        }
     }
 
-    if( (cpu&X264_CPU_SSSE3) && !(cpu&X264_CPU_SLOW_ATOM) )
+    if( (cpu&X264_CPU_SSSE3) && !(cpu&X264_CPU_SSE2_IS_SLOW) )
     {
-        dctf->sub4x4_dct    = x264_sub4x4_dct_ssse3;
-        dctf->sub8x8_dct    = x264_sub8x8_dct_ssse3;
-        dctf->sub16x16_dct  = x264_sub16x16_dct_ssse3;
-        dctf->sub8x8_dct8   = x264_sub8x8_dct8_ssse3;
-        dctf->sub16x16_dct8 = x264_sub16x16_dct8_ssse3;
         dctf->sub8x16_dct_dc = x264_sub8x16_dct_dc_ssse3;
-        dctf->add8x8_idct_dc = x264_add8x8_idct_dc_ssse3;
-        dctf->add16x16_idct_dc = x264_add16x16_idct_dc_ssse3;
+        if( !(cpu&X264_CPU_SLOW_ATOM) )
+        {
+            dctf->sub4x4_dct    = x264_sub4x4_dct_ssse3;
+            dctf->sub8x8_dct    = x264_sub8x8_dct_ssse3;
+            dctf->sub16x16_dct  = x264_sub16x16_dct_ssse3;
+            dctf->sub8x8_dct8   = x264_sub8x8_dct8_ssse3;
+            dctf->sub16x16_dct8 = x264_sub16x16_dct8_ssse3;
+            if( !(cpu&X264_CPU_SLOW_PSHUFB) )
+            {
+                dctf->add8x8_idct_dc = x264_add8x8_idct_dc_ssse3;
+                dctf->add16x16_idct_dc = x264_add16x16_idct_dc_ssse3;
+            }
+        }
     }
 
     if( cpu&X264_CPU_SSE4 )
@@ -680,6 +1047,17 @@ void x264_dct_init( int cpu, x264_dct_function_t *dctf )
     {
         dctf->sub8x8_dct       = x264_sub8x8_dct_xop;
         dctf->sub16x16_dct     = x264_sub16x16_dct_xop;
+    }
+
+    if( cpu&X264_CPU_AVX2 )
+    {
+        dctf->add8x8_idct      = x264_add8x8_idct_avx2;
+        dctf->add16x16_idct    = x264_add16x16_idct_avx2;
+        dctf->sub8x8_dct       = x264_sub8x8_dct_avx2;
+        dctf->sub16x16_dct     = x264_sub16x16_dct_avx2;
+#if ARCH_X86_64
+        dctf->sub16x16_dct8    = x264_sub16x16_dct8_avx2;
+#endif
     }
 #endif //HAVE_MMX
 
@@ -725,6 +1103,18 @@ void x264_dct_init( int cpu, x264_dct_function_t *dctf )
         dctf->add16x16_idct8= x264_add16x16_idct8_neon;
     }
 #endif
+
+    if( b_mpeg2 )
+    {
+        dctf->sub8x8_dct8 = sub8x8_dct_mpeg2;
+        dctf->add8x8_idct8 = add8x8_idct_mpeg2;
+
+        dctf->sub16x16_dct8 = sub16x16_dct_mpeg2;
+        dctf->add16x16_idct8 = add16x16_idct_mpeg2;
+
+        x264_idct_init_mpeg2();
+    }
+
 #endif // HIGH_BIT_DEPTH
 }
 
@@ -766,6 +1156,24 @@ void x264_dct_init( int cpu, x264_dct_function_t *dctf )
     ZIG(56,6,6) ZIG(57,7,6) ZIG(58,2,7) ZIG(59,3,7)\
     ZIG(60,4,7) ZIG(61,5,7) ZIG(62,6,7) ZIG(63,7,7)
 
+#define ZIGZAG8_FIELD_MPEG2\
+    ZIG( 0,0,0) ZIG( 1,1,0) ZIG( 2,2,0) ZIG( 3,3,0)\
+    ZIG( 4,0,1) ZIG( 5,1,1) ZIG( 6,0,2) ZIG( 7,1,2)\
+    ZIG( 8,2,1) ZIG( 9,3,1) ZIG(10,4,0) ZIG(11,5,0)\
+    ZIG(12,6,0) ZIG(13,7,0) ZIG(14,7,1) ZIG(15,6,1)\
+    ZIG(16,5,1) ZIG(17,4,1) ZIG(18,3,2) ZIG(19,2,2)\
+    ZIG(20,0,3) ZIG(21,1,3) ZIG(22,0,4) ZIG(23,1,4)\
+    ZIG(24,2,3) ZIG(25,3,3) ZIG(26,4,2) ZIG(27,5,2)\
+    ZIG(28,6,2) ZIG(29,7,2) ZIG(30,4,3) ZIG(31,5,3)\
+    ZIG(32,6,3) ZIG(33,7,3) ZIG(34,2,4) ZIG(35,3,4)\
+    ZIG(36,0,5) ZIG(37,1,5) ZIG(38,0,6) ZIG(39,1,6)\
+    ZIG(40,2,5) ZIG(41,3,5) ZIG(42,4,4) ZIG(43,5,4)\
+    ZIG(44,6,4) ZIG(45,7,4) ZIG(46,4,5) ZIG(47,5,5)\
+    ZIG(48,6,5) ZIG(49,7,5) ZIG(50,2,6) ZIG(51,3,6)\
+    ZIG(52,0,7) ZIG(53,1,7) ZIG(54,2,7) ZIG(55,3,7)\
+    ZIG(56,4,6) ZIG(57,5,6) ZIG(58,6,6) ZIG(59,7,6)\
+    ZIG(60,4,7) ZIG(61,5,7) ZIG(62,6,7) ZIG(63,7,7)
+
 #define ZIGZAG4_FRAME\
     ZIGDC( 0,0,0) ZIG( 1,0,1) ZIG( 2,1,0) ZIG( 3,2,0)\
     ZIG( 4,1,1) ZIG( 5,0,2) ZIG( 6,0,3) ZIG( 7,1,2)\
@@ -786,6 +1194,16 @@ static void zigzag_scan_8x8_frame( dctcoef level[64], dctcoef dct[64] )
 static void zigzag_scan_8x8_field( dctcoef level[64], dctcoef dct[64] )
 {
     ZIGZAG8_FIELD
+}
+
+static void zigzag_scan_8x8_field_mpeg2( dctcoef level[64], dctcoef dct[64] )
+{
+    ZIGZAG8_FIELD_MPEG2
+}
+
+void zigzag_scan_8x8_cqm( uint8_t level[64], const uint8_t dct[64] )
+{
+    ZIGZAG8_FRAME
 }
 
 #undef ZIG
@@ -899,7 +1317,7 @@ static void zigzag_interleave_8x8_cavlc( dctcoef *dst, dctcoef *src, uint8_t *nn
     }
 }
 
-void x264_zigzag_init( int cpu, x264_zigzag_function_t *pf_progressive, x264_zigzag_function_t *pf_interlaced )
+void x264_zigzag_init( int cpu, x264_zigzag_function_t *pf_progressive, x264_zigzag_function_t *pf_interlaced, int b_mpeg2 )
 {
     pf_interlaced->scan_8x8   = zigzag_scan_8x8_field;
     pf_progressive->scan_8x8  = zigzag_scan_8x8_frame;
@@ -951,7 +1369,7 @@ void x264_zigzag_init( int cpu, x264_zigzag_function_t *pf_progressive, x264_zig
         pf_interlaced->sub_4x4ac = x264_zigzag_sub_4x4ac_field_ssse3;
         pf_progressive->sub_4x4ac= x264_zigzag_sub_4x4ac_frame_ssse3;
         pf_progressive->scan_8x8 = x264_zigzag_scan_8x8_frame_ssse3;
-        if( cpu&X264_CPU_SHUFFLE_IS_FAST )
+        if( !(cpu&X264_CPU_SLOW_SHUFFLE) )
             pf_progressive->scan_4x4 = x264_zigzag_scan_4x4_frame_ssse3;
     }
     if( cpu&X264_CPU_AVX )
@@ -962,8 +1380,7 @@ void x264_zigzag_init( int cpu, x264_zigzag_function_t *pf_progressive, x264_zig
         pf_interlaced->sub_4x4ac = x264_zigzag_sub_4x4ac_field_avx;
         pf_progressive->sub_4x4ac= x264_zigzag_sub_4x4ac_frame_avx;
 #endif
-        if( cpu&X264_CPU_SHUFFLE_IS_FAST )
-            pf_progressive->scan_4x4 = x264_zigzag_scan_4x4_frame_avx;
+        pf_progressive->scan_4x4 = x264_zigzag_scan_4x4_frame_avx;
     }
     if( cpu&X264_CPU_XOP )
     {
@@ -1005,7 +1422,7 @@ void x264_zigzag_init( int cpu, x264_zigzag_function_t *pf_progressive, x264_zig
         pf_interlaced->interleave_8x8_cavlc =
         pf_progressive->interleave_8x8_cavlc = x264_zigzag_interleave_8x8_cavlc_mmx;
     }
-    if( cpu&X264_CPU_SHUFFLE_IS_FAST )
+    if( (cpu&X264_CPU_SSE2) && !(cpu&(X264_CPU_SLOW_SHUFFLE|X264_CPU_SSE2_IS_SLOW)) )
     {
         pf_interlaced->interleave_8x8_cavlc =
         pf_progressive->interleave_8x8_cavlc = x264_zigzag_interleave_8x8_cavlc_sse2;
@@ -1016,6 +1433,16 @@ void x264_zigzag_init( int cpu, x264_zigzag_function_t *pf_progressive, x264_zig
         pf_interlaced->interleave_8x8_cavlc =
         pf_progressive->interleave_8x8_cavlc = x264_zigzag_interleave_8x8_cavlc_avx;
     }
+
+    if( cpu&X264_CPU_AVX2 )
+    {
+        pf_interlaced->interleave_8x8_cavlc =
+        pf_progressive->interleave_8x8_cavlc = x264_zigzag_interleave_8x8_cavlc_avx2;
+    }
 #endif // HIGH_BIT_DEPTH
 #endif
+
+    /* MPEG-2 TODO: Write SIMD */
+    if( b_mpeg2 )
+        pf_interlaced->scan_8x8 = zigzag_scan_8x8_field_mpeg2;
 }

@@ -1,7 +1,7 @@
 /*****************************************************************************
  * mc.c: motion compensation
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
@@ -242,6 +242,179 @@ static pixel *get_ref( pixel *dst,   intptr_t *i_dst_stride,
     }
 }
 
+static void mc_luma_mpeg2( pixel *dst,    intptr_t i_dst_stride,
+                           pixel *src[4], intptr_t i_src_stride,
+                           int mvx, int mvy,
+                           int i_width, int i_height, const x264_weight_t *weight )
+{
+    mvx >>= 1;
+    mvy >>= 1;
+
+    int offset = (mvy>>1)*i_src_stride + (mvx>>1);
+    pixel *src1 = src[0] + offset;
+    pixel *srcp = src1 + i_src_stride;
+
+    if( !((mvx|mvy)&1) ) // fullpel
+        mc_copy( src1, i_src_stride, dst, i_dst_stride, i_width, i_height );
+    else if( (mvx&mvy)&1 ) // centre hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+                dst[x] = ( src1[x] + src1[x+1] + srcp[x] + srcp[x+1] + 2 ) >> 2;
+            dst  += i_dst_stride;
+            src1  = srcp;
+            srcp += i_src_stride;
+        }
+    }
+    else if( mvx&1 ) // horizontal hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+                dst[x] = ( src1[x] + src1[x+1] + 1 ) >> 1;
+            dst  += i_dst_stride;
+            src1  = srcp;
+            srcp += i_src_stride;
+        }
+    }
+    else // vertical hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+                dst[x] = ( src1[x] + srcp[x] + 1 ) >> 1;
+            dst  += i_dst_stride;
+            src1  = srcp;
+            srcp += i_src_stride;
+        }
+    }
+}
+
+static void mc_chroma_mpeg2( pixel *dstu, pixel *dstv, intptr_t i_dst_stride,
+                             pixel *src, intptr_t i_src_stride,
+                             int mvx, int mvy,
+                             int i_width, int i_height )
+{
+    mvx /= 4;
+    mvy /= 4;
+    src += (mvy >> 1) * i_src_stride + (mvx >> 1)*2;
+    pixel *srcp = &src[i_src_stride];
+
+    if( !((mvx|mvy)&1) ) //fullpell
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+            {
+                dstu[x] = src[2*x];
+                dstv[x] = src[2*x+1];
+            }
+            dstu += i_dst_stride;
+            dstv += i_dst_stride;
+            src += i_src_stride;
+        }
+    }
+    else if( (mvx&mvy)&1 ) // centre hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+            {
+                dstu[x] = ( src[2*x] + src[2*x+2] + srcp[2*x] + srcp[2*x+2] + 2 ) >> 2;
+                dstv[x] = ( src[2*x+1] + src[2*x+3] + srcp[2*x+1] + srcp[2*x+3] + 2 ) >> 2;
+            }
+            dstu += i_dst_stride;
+            dstv += i_dst_stride;
+            src   = srcp;
+            srcp += i_src_stride;
+        }
+    }
+    else if( mvx&1 ) // horizontal hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+            {
+                dstu[x] = ( src[2*x] + src[2*x+2] + 1 ) >> 1;
+                dstv[x] = ( src[2*x+1] + src[2*x+3] + 1 ) >> 1;
+            }
+            dstu += i_dst_stride;
+            dstv += i_dst_stride;
+            src  += i_src_stride;
+        }
+    }
+    else // vertical hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+            {
+                dstu[x] = ( src[2*x] + srcp[2*x] + 1 ) >> 1;
+                dstv[x] = ( src[2*x+1] + srcp[2*x+1] + 1 ) >> 1;
+            }
+            dstu += i_dst_stride;
+            dstv += i_dst_stride;
+            src = srcp;
+            srcp += i_src_stride;
+        }
+    }
+}
+
+static pixel *get_ref_mpeg2( pixel *dst,    intptr_t *i_dst_stride,
+                             pixel *src[4], intptr_t i_src_stride,
+                             int mvx, int mvy,
+                             int i_width, int i_height, const x264_weight_t *weight )
+{
+    mvx >>= 1;
+    mvy >>= 1;
+
+    pixel *src1 = src[0] + (mvy>>1)*i_src_stride + (mvx>>1);
+    pixel *srcp = src1 + i_src_stride;
+    pixel *dst_bak = dst;
+
+    if( !((mvx|mvy)&1) ) // fullpel
+    {
+        *i_dst_stride = i_src_stride;
+        return src1;
+    }
+    else if( (mvx&mvy)&1 ) // centre hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+                dst[x] = ( src1[x] + src1[x+1] + srcp[x] + srcp[x+1] + 2 ) >> 2;
+            dst  += *i_dst_stride;
+            src1  = srcp;
+            srcp += i_src_stride;
+        }
+    }
+    else if( mvx&1 ) // horizontal hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+                dst[x] = ( src1[x] + src1[x+1] + 1 ) >> 1;
+            dst  += *i_dst_stride;
+            src1  = srcp;
+            srcp += i_src_stride;
+        }
+    }
+    else // vertical hpel positions
+    {
+        for( int y = 0; y < i_height; y++ )
+        {
+            for( int x = 0; x < i_width; x++ )
+                dst[x] = ( src1[x] + srcp[x] + 1 ) >> 1;
+            dst  += *i_dst_stride;
+            src1  = srcp;
+            srcp += i_src_stride;
+        }
+    }
+
+    return dst_bak;
+}
+
 /* full chroma mc (ie until 1/8 pixel)*/
 static void mc_chroma( pixel *dstu, pixel *dstv, intptr_t i_dst_stride,
                        pixel *src, intptr_t i_src_stride,
@@ -415,7 +588,7 @@ void x264_frame_init_lowres( x264_t *h, x264_frame_t *frame )
     memcpy( src+i_stride*i_height, src+i_stride*(i_height-1), (i_width+1) * sizeof(pixel) );
     h->mc.frame_init_lowres_core( src, frame->lowres[0], frame->lowres[1], frame->lowres[2], frame->lowres[3],
                                   i_stride, frame->i_stride_lowres, frame->i_width_lowres, frame->i_lines_lowres );
-    x264_frame_expand_border_lowres( frame );
+    x264_frame_expand_border_lowres( h, frame );
 
     memset( frame->i_cost_est, -1, sizeof(frame->i_cost_est) );
 
@@ -453,6 +626,24 @@ static void frame_init_lowres_core( pixel *src0, pixel *dst0, pixel *dsth, pixel
     }
 }
 
+static void frame_init_lowres_core_mpeg2( pixel *src0, pixel *dst0, pixel *dsth, pixel *dstv, pixel *dstc,
+                                          intptr_t src_stride, intptr_t dst_stride, int width, int height )
+{
+    for( int y = 0; y < height; y++ )
+    {
+        pixel *src1 = src0+src_stride;
+        for( int x = 0; x<width; x++ )
+        {
+            // slower than naive bilinear, but matches asm
+#define FILTER(a,b,c,d) ((((a+b+1)>>1)+((c+d+1)>>1)+1)>>1)
+            dst0[x] = FILTER(src0[2*x  ], src1[2*x  ], src0[2*x+1], src1[2*x+1]);
+#undef FILTER
+        }
+        src0 += src_stride*2;
+        dst0 += dst_stride;
+    }
+}
+
 /* Estimate the total amount of influence on future quality that could be had if we
  * were to improve the reference samples used to inter predict any given macroblock. */
 static void mbtree_propagate_cost( int *dst, uint16_t *propagate_in, uint16_t *intra_costs,
@@ -469,7 +660,7 @@ static void mbtree_propagate_cost( int *dst, uint16_t *propagate_in, uint16_t *i
     }
 }
 
-void x264_mc_init( int cpu, x264_mc_functions_t *pf )
+void x264_mc_init( int cpu, x264_mc_functions_t *pf, int cpu_independent, int b_mpeg2 )
 {
     pf->mc_luma   = mc_luma;
     pf->get_ref   = get_ref;
@@ -534,6 +725,19 @@ void x264_mc_init( int cpu, x264_mc_functions_t *pf )
 #if HAVE_ARMV6
     x264_mc_init_arm( cpu, pf );
 #endif
+
+    // override any simd for the time being
+    if( b_mpeg2 )
+    {
+        pf->mc_luma   = mc_luma_mpeg2;
+        pf->mc_chroma = mc_chroma_mpeg2;
+        pf->get_ref   = get_ref_mpeg2;
+        pf->hpel_filter = NULL;
+        pf->frame_init_lowres_core = frame_init_lowres_core_mpeg2;
+    }
+
+    if( cpu_independent )
+        pf->mbtree_propagate_cost = mbtree_propagate_cost;
 }
 
 void x264_frame_filter( x264_t *h, x264_frame_t *frame, int mb_y, int b_end )
@@ -542,10 +746,10 @@ void x264_frame_filter( x264_t *h, x264_frame_t *frame, int mb_y, int b_end )
     int start = mb_y*16 - 8; // buffer = 4 for deblock + 3 for 6tap, rounded to 8
     int height = (b_end ? frame->i_lines[0] + 16*PARAM_INTERLACED : (mb_y+b_interlaced)*16) + 8;
 
-    if( mb_y & b_interlaced )
+    if( (mb_y & b_interlaced) && !MPEG2 )
         return;
 
-    for( int p = 0; p < (CHROMA444 ? 3 : 1); p++ )
+    for( int p = 0; p < (CHROMA444 ? 3 : 1) && !MPEG2; p++ )
     {
         int stride = frame->i_stride[p];
         const int width = frame->i_width[p];

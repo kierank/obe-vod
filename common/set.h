@@ -1,7 +1,7 @@
 /*****************************************************************************
  * set.h: quantization init
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Laurent Aimar <fenrir@via.ecp.fr>
@@ -29,6 +29,10 @@
 
 enum profile_e
 {
+    MPEG2_PROFILE_422    = 0,
+    MPEG2_PROFILE_HIGH   = 1,
+    MPEG2_PROFILE_MAIN   = 4,
+    MPEG2_PROFILE_SIMPLE = 5,
     PROFILE_BASELINE = 66,
     PROFILE_MAIN     = 77,
     PROFILE_HIGH    = 100,
@@ -66,6 +70,7 @@ typedef struct
 
     int i_profile_idc;
     int i_level_idc;
+    int i_frame_rate_code; /* MPEG-2 */
 
     int b_constraint_set0;
     int b_constraint_set1;
@@ -248,8 +253,29 @@ static const uint8_t * const x264_cqm_jvt[8] =
     x264_cqm_jvt8i, x264_cqm_jvt8p
 };
 
+/* matrix is transposed */
+static const uint8_t x264_cqm_intra_mpeg2[64] =
+{
+     8,16,19,22,22,26,26,27,
+    16,16,22,22,26,27,27,29,
+    19,22,26,26,27,29,29,35,
+    22,24,27,27,29,32,34,38,
+    26,27,29,29,32,35,38,46,
+    27,29,34,34,35,40,46,56,
+    29,34,34,37,40,48,56,69,
+    34,37,38,40,48,58,69,83
+};
+
 int  x264_cqm_init( x264_t *h );
+int  x264_cqm_init_mpeg2( x264_t *h );
 void x264_cqm_delete( x264_t *h );
 int  x264_cqm_parse_file( x264_t *h, const char *filename );
+
+typedef struct
+{
+    int fps_code;
+    int fps_num;
+    int fps_den;
+} x264_fps_mpeg2_t;
 
 #endif

@@ -1,7 +1,7 @@
 /*****************************************************************************
  * set.c: quantization init
  *****************************************************************************
- * Copyright (C) 2005-2012 x264 project
+ * Copyright (C) 2005-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *
@@ -71,6 +71,26 @@ static const uint16_t quant8_scale[6][6] =
     {  7282,  6428, 11570,  6830,  9118,  8640 }
 };
 
+/* MPEG-2 */
+static const uint8_t qscale_linear_mpeg2[32] =
+{
+      0,   2,   4,   6,   8,  10,  12,  14,
+     16,  18,  20,  22,  24,  26,  28,  30,
+     32,  34,  36,  38,  40,  42,  44,  46,
+     48,  50,  52,  54,  56,  58,  60,  62
+};
+static const uint8_t qscale_nonlinear_mpeg2[32] =
+{
+      0,   1,   2,   3,   4,   5,   6,   7,
+      8,  10,  12,  14,  16,  18,  20,  22,
+     24,  28,  32,  36,  40,  44,  48,  52,
+     56,  64,  72,  80,  88,  96, 104, 112
+};
+static const uint8_t * x264_qscale_mpeg2[2] =
+{
+    qscale_linear_mpeg2, qscale_nonlinear_mpeg2
+};
+
 int x264_cqm_init( x264_t *h )
 {
     int def_quant4[6][16];
@@ -85,43 +105,48 @@ int x264_cqm_init( x264_t *h )
     int max_qp_err = -1;
     int max_chroma_qp_err = -1;
     int min_qp_err = QP_MAX+1;
-    int num_8x8_lists = h->sps->i_chroma_format_idc == CHROMA_444 ? 4 : 2; /* Checkasm may segfault if optimized out by --chroma-format */
+    int num_8x8_lists = h->sps->i_chroma_format_idc == CHROMA_444 ? 4
+                      : h->param.analyse.b_transform_8x8 ? 2 : 0; /* Checkasm may segfault if optimized out by --chroma-format */
 
-    for( int i = 0; i < 4 + num_8x8_lists; i++ )
-    {
-        int size = i<4 ? 16 : 64;
-        int j;
-        for( j = (i<4 ? 0 : 4); j < i; j++ )
-            if( !memcmp( h->pps->scaling_list[i], h->pps->scaling_list[j], size*sizeof(uint8_t) ) )
-                break;
-        if( j < i )
-        {
-            h->  quant4_mf[i] = h->  quant4_mf[j];
-            h->dequant4_mf[i] = h->dequant4_mf[j];
-            h->unquant4_mf[i] = h->unquant4_mf[j];
-        }
-        else
-        {
-            CHECKED_MALLOC( h->  quant4_mf[i], (QP_MAX+1)*size*sizeof(udctcoef) );
-            CHECKED_MALLOC( h->dequant4_mf[i],  6*size*sizeof(int) );
-            CHECKED_MALLOC( h->unquant4_mf[i], (QP_MAX+1)*size*sizeof(int) );
-        }
-
-        for( j = (i<4 ? 0 : 4); j < i; j++ )
-            if( deadzone[j&3] == deadzone[i&3] &&
-                !memcmp( h->pps->scaling_list[i], h->pps->scaling_list[j], size*sizeof(uint8_t) ) )
-                break;
-        if( j < i )
-        {
-            h->quant4_bias[i] = h->quant4_bias[j];
-            h->quant4_bias0[i] = h->quant4_bias0[j];
-        }
-        else
-        {
-            CHECKED_MALLOC( h->quant4_bias[i], (QP_MAX+1)*size*sizeof(udctcoef) );
-            CHECKED_MALLOC( h->quant4_bias0[i], (QP_MAX+1)*size*sizeof(udctcoef) );
-        }
+#define CQM_ALLOC( w, count )\
+    for( int i = 0; i < count; i++ )\
+    {\
+        int size = w*w;\
+        int start = w == 8 ? 4 : 0;\
+        int j;\
+        for( j = 0; j < i; j++ )\
+            if( !memcmp( h->pps->scaling_list[i+start], h->pps->scaling_list[j+start], size*sizeof(uint8_t) ) )\
+                break;\
+        if( j < i )\
+        {\
+            h->  quant##w##_mf[i] = h->  quant##w##_mf[j];\
+            h->dequant##w##_mf[i] = h->dequant##w##_mf[j];\
+            h->unquant##w##_mf[i] = h->unquant##w##_mf[j];\
+        }\
+        else\
+        {\
+            CHECKED_MALLOC( h->  quant##w##_mf[i], (QP_MAX+1)*size*sizeof(udctcoef) );\
+            CHECKED_MALLOC( h->dequant##w##_mf[i],  6*size*sizeof(int) );\
+            CHECKED_MALLOC( h->unquant##w##_mf[i], (QP_MAX+1)*size*sizeof(int) );\
+        }\
+        for( j = 0; j < i; j++ )\
+            if( deadzone[j] == deadzone[i] &&\
+                !memcmp( h->pps->scaling_list[i+start], h->pps->scaling_list[j+start], size*sizeof(uint8_t) ) )\
+                break;\
+        if( j < i )\
+        {\
+            h->quant##w##_bias[i] = h->quant##w##_bias[j];\
+            h->quant##w##_bias0[i] = h->quant##w##_bias0[j];\
+        }\
+        else\
+        {\
+            CHECKED_MALLOC( h->quant##w##_bias[i], (QP_MAX+1)*size*sizeof(udctcoef) );\
+            CHECKED_MALLOC( h->quant##w##_bias0[i], (QP_MAX+1)*size*sizeof(udctcoef) );\
+        }\
     }
+
+    CQM_ALLOC( 4, 4 )
+    CQM_ALLOC( 8, num_8x8_lists )
 
     for( int q = 0; q < 6; q++ )
     {
@@ -204,6 +229,9 @@ int x264_cqm_init( x264_t *h )
         for( int cat = 0; cat < 3 + CHROMA444; cat++ )
         {
             int dct8x8 = cat&1;
+            if( !h->param.analyse.b_transform_8x8 && dct8x8 )
+                continue;
+
             int size = dct8x8 ? 64 : 16;
             udctcoef *nr_offset = h->nr_offset_emergency[q][cat];
             /* Denoise chroma first (due to h264's chroma QP offset), then luma, then DC. */
@@ -263,6 +291,45 @@ fail:
     return -1;
 }
 
+int x264_cqm_init_mpeg2( x264_t *h )
+{
+    const uint8_t *qscale = x264_qscale_mpeg2[h->param.b_nonlinear_quant];
+    int j;
+    int matrices = CHROMA_FORMAT == CHROMA_422 ? 4 : 2;
+    int deadzone[2] = { 32 - h->param.analyse.i_luma_deadzone[1],
+                        32 - h->param.analyse.i_luma_deadzone[0] };
+    int intra_mf = j = 1 << ( 10 + h->param.i_intra_dc_precision );
+    int intra_bias = X264_MIN( DIV(deadzone[0]<<10, j), (1<<15)/j );
+
+    for( int i = 0; i < matrices; i++ )
+    {
+        CHECKED_MALLOC( h->quant8_bias[i], (QP_MAX_SPEC_MPEG2+1)*64*sizeof(udctcoef) );
+        CHECKED_MALLOC( h->  quant8_mf[i], (QP_MAX_SPEC_MPEG2+1)*64*sizeof(udctcoef) );
+        CHECKED_MALLOC( h->dequant8_mf[i], (QP_MAX_SPEC_MPEG2+1)*64*sizeof(int) );
+    }
+    for( int q = 1; q < QP_MAX_SPEC_MPEG2+1; q++ )
+    {
+        for( int m = 0; m < matrices; m++ )
+        {
+            for( int i = 0; i < 64; i++ )
+            {
+                h->  quant8_mf[m][q][i] = j = ( 1 << 17 ) / ( qscale[q] * h->pps->scaling_list[m][i] );
+                h->dequant8_mf[m][q][i] = 2 * qscale[q] * h->pps->scaling_list[m][i];
+                h->quant8_bias[m][q][i] = X264_MIN( DIV(deadzone[m&1]<<10, j), (1<<15)/j );
+            }
+            if( !( m & 1 ) ) // intra dc
+            {
+                h->  quant8_mf[m][q][0] = intra_mf;
+                h->quant8_bias[m][q][0] = intra_bias;
+            }
+        }
+    }
+    return 0;
+fail:
+    x264_cqm_delete( h );
+    return -1;
+}
+
 #define CQM_DELETE( n, max )\
     for( int i = 0; i < (max); i++ )\
     {\
@@ -288,8 +355,9 @@ fail:
 
 void x264_cqm_delete( x264_t *h )
 {
-    CQM_DELETE( 4, 4 );
-    CQM_DELETE( 8, CHROMA444 ? 4 : 2 );
+    if( !MPEG2 )
+        CQM_DELETE( 4, 4 );
+    CQM_DELETE( 8, CHROMA444 || ( MPEG2 && CHROMA_FORMAT == CHROMA_422 ) ? 4 : 2 );
     x264_free( h->nr_offset_emergency );
 }
 
@@ -297,6 +365,7 @@ static int x264_cqm_parse_jmlist( x264_t *h, const char *buf, const char *name,
                                   uint8_t *cqm, const uint8_t *jvt, int length )
 {
     int i;
+    int min = MPEG2 ? 4 : 1;
 
     char *p = strstr( buf, name );
     if( !p )
@@ -320,7 +389,7 @@ static int x264_cqm_parse_jmlist( x264_t *h, const char *buf, const char *name,
             memcpy( cqm, jvt, length );
             return 0;
         }
-        if( coef < 1 || coef > 255 )
+        if( coef < min || coef > 255 )
         {
             x264_log( h, X264_LOG_ERROR, "bad coefficient in list '%s'\n", name );
             return -1;
@@ -354,16 +423,35 @@ int x264_cqm_parse_file( x264_t *h, const char *filename )
     while( (p = strchr( buf, '#' )) != NULL )
         memset( p, ' ', strcspn( p, "\n" ) );
 
-    b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA4X4_LUMA",   h->param.cqm_4iy, x264_cqm_jvt4i, 16 );
-    b_error |= x264_cqm_parse_jmlist( h, buf, "INTER4X4_LUMA",   h->param.cqm_4py, x264_cqm_jvt4p, 16 );
-    b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA4X4_CHROMA", h->param.cqm_4ic, x264_cqm_jvt4i, 16 );
-    b_error |= x264_cqm_parse_jmlist( h, buf, "INTER4X4_CHROMA", h->param.cqm_4pc, x264_cqm_jvt4p, 16 );
-    b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA8X8_LUMA",   h->param.cqm_8iy, x264_cqm_jvt8i, 64 );
-    b_error |= x264_cqm_parse_jmlist( h, buf, "INTER8X8_LUMA",   h->param.cqm_8py, x264_cqm_jvt8p, 64 );
-    if( CHROMA444 )
+    if( MPEG2 )
     {
-        b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA8X8_CHROMA", h->param.cqm_8ic, x264_cqm_jvt8i, 64 );
-        b_error |= x264_cqm_parse_jmlist( h, buf, "INTER8X8_CHROMA", h->param.cqm_8pc, x264_cqm_jvt8p, 64 );
+        // x264_cqm_intra_mpeg2 is transposed, but param.cqm_8i* is not
+        uint8_t intra[64];
+        for( int i = 0; i < 8; i++ )
+            for( int j = 0; j < 8; j++ )
+                intra[8*i+j] = x264_cqm_intra_mpeg2[8*j+i];
+
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA_LUMA", h->param.cqm_8iy, intra, 64 );
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTER_LUMA", h->param.cqm_8py, x264_cqm_flat16, 64 );
+        if( CHROMA_FORMAT == CHROMA_422 )
+        {
+            b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA_CHROMA", h->param.cqm_8ic, h->param.cqm_8iy, 64 );
+            b_error |= x264_cqm_parse_jmlist( h, buf, "INTER_CHROMA", h->param.cqm_8pc, h->param.cqm_8py, 64 );
+        }
+    }
+    else
+    {
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA4X4_LUMA",   h->param.cqm_4iy, x264_cqm_jvt4i, 16 );
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTER4X4_LUMA",   h->param.cqm_4py, x264_cqm_jvt4p, 16 );
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA4X4_CHROMA", h->param.cqm_4ic, x264_cqm_jvt4i, 16 );
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTER4X4_CHROMA", h->param.cqm_4pc, x264_cqm_jvt4p, 16 );
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA8X8_LUMA",   h->param.cqm_8iy, x264_cqm_jvt8i, 64 );
+        b_error |= x264_cqm_parse_jmlist( h, buf, "INTER8X8_LUMA",   h->param.cqm_8py, x264_cqm_jvt8p, 64 );
+        if( CHROMA444 )
+        {
+            b_error |= x264_cqm_parse_jmlist( h, buf, "INTRA8X8_CHROMA", h->param.cqm_8ic, x264_cqm_jvt8i, 64 );
+            b_error |= x264_cqm_parse_jmlist( h, buf, "INTER8X8_CHROMA", h->param.cqm_8pc, x264_cqm_jvt8p, 64 );
+        }
     }
 
     x264_free( buf );

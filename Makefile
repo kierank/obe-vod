@@ -8,8 +8,12 @@ vpath %.S $(SRCPATH)
 vpath %.asm $(SRCPATH)
 vpath %.rc $(SRCPATH)
 
+GENERATED =
+
 all: default
 default:
+
+CLIS = x264$(EXE)
 
 SRCS = common/mc.c common/predict.c common/pixel.c common/macroblock.c \
        common/frame.c common/dct.c common/cpu.c common/cabac.c \
@@ -70,6 +74,11 @@ endif
 
 ifneq ($(findstring HAVE_LIBMPEGTS 1, $(CONFIG)),)
 SRCCLI += output/ts.c
+endif
+
+ifneq ($(findstring HAVE_MPEG2 1, $(CONFIG)),)
+SRCS   += common/mpeg2vlc.c encoder/mpeg2vlc.c
+CLIS   += x262$(EXE)
 endif
 
 # Visualization sources
@@ -142,6 +151,43 @@ ifneq ($(HAVE_GETOPT_LONG),1)
 SRCCLI += extras/getopt.c
 endif
 
+ifeq ($(SYS),WINDOWS)
+OBJCLI += $(if $(RC), x264res.o)
+ifneq ($(SONAME),)
+SRCSO  += x264dll.c
+OBJSO  += $(if $(RC), x264res.dll.o)
+endif
+endif
+
+QUOTED_CFLAGS := $(CFLAGS)
+
+ifeq ($(HAVE_OPENCL),yes)
+empty:=
+space:=$(empty) $(empty)
+escaped:=\ $(empty)
+open:=(
+escopen:=\(
+close:=)
+escclose:=\)
+SAFE_INC_DIR := $(subst $(space),$(escaped),$(OPENCL_INC_DIR))
+SAFE_INC_DIR := $(subst $(open),$(escopen),$(SAFE_INC_DIR))
+SAFE_INC_DIR := $(subst $(close),$(escclose),$(SAFE_INC_DIR))
+SAFE_LIB_DIR := $(subst $(space),$(escaped),$(OPENCL_LIB_DIR))
+SAFE_LIB_DIR := $(subst $(open),$(escopen),$(SAFE_LIB_DIR))
+SAFE_LIB_DIR := $(subst $(close),$(escclose),$(SAFE_LIB_DIR))
+# For normal CFLAGS and LDFLAGS, we must escape spaces with a backslash to
+# make gcc happy
+CFLAGS += -I$(SAFE_INC_DIR) -DCL_USE_DEPRECATED_OPENCL_1_1_APIS
+LDFLAGS += -l$(OPENCL_LIB) -L$(SAFE_LIB_DIR)
+# For the CFLAGS used by the .depend rule, we must add quotes because
+# the rule does an extra level of shell expansions
+QUOTED_CFLAGS += -I"$(OPENCL_INC_DIR)" -DCL_USE_DEPRECATED_OPENCL_1_1_APIS
+common/oclobj.h: common/opencl/x264-cl.h $(wildcard $(SRCPATH)/common/opencl/*.cl)
+	cat $^ | perl $(SRCPATH)/tools/cltostr.pl x264_opencl_source > $@
+GENERATED += common/oclobj.h
+SRCS += common/opencl.c encoder/slicetype-cl.c
+endif
+
 OBJS   += $(SRCS:%.c=%.o)
 OBJCLI += $(SRCCLI:%.c=%.o)
 OBJSO  += $(SRCSO:%.c=%.o)
@@ -152,12 +198,12 @@ cli: obe-vod$(EXE)
 lib-static: $(LIBX264)
 lib-shared: $(SONAME)
 
-$(LIBX264): .depend $(OBJS) $(OBJASM)
+$(LIBX264): $(GENERATED) .depend $(OBJS) $(OBJASM)
 	rm -f $(LIBX264)
 	$(AR)$@ $(OBJS) $(OBJASM)
 	$(if $(RANLIB), $(RANLIB) $@)
 
-$(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
+$(SONAME): $(GENERATED) .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(LD)$@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
 ifneq ($(EXE),)
@@ -166,10 +212,19 @@ obe-vod: obe-vod$(EXE)
 checkasm: checkasm$(EXE)
 endif
 
-obe-vod$(EXE): .depend $(OBJCLI) $(CLI_LIBX264)
+obe-vod$(EXE): $(GENERATED) .depend $(OBJCLI) $(CLI_LIBX264)
 	$(LD)$@ $(OBJCLI) $(CLI_LIBX264) $(LDFLAGSCLI) $(LDFLAGS)
 
-checkasm$(EXE): .depend $(OBJCHK) $(LIBX264)
+ifeq ($(HAVE_MPEG2),1)
+ifneq ($(EXE),)
+.PHONY: x262$(EXE)
+x262: x262$(EXE)
+endif
+x262$(EXE): x264
+	ln -sf x264$(EXE) x262$(EXE)
+endif
+
+checkasm$(EXE): $(GENERATED) .depend $(OBJCHK) $(LIBX264)
 	$(LD)$@ $(OBJCHK) $(LIBX264) $(LDFLAGS)
 
 $(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK): .depend
@@ -190,7 +245,7 @@ $(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK): .depend
 
 .depend: config.mak
 	@rm -f .depend
-	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS) $(SRCCLI) $(SRCSO)), $(CC) $(CFLAGS) $(SRC) $(DEPMT) $(SRC:$(SRCPATH)/%.c=%.o) $(DEPMM) 1>> .depend;)
+	@$(foreach SRC, $(addprefix $(SRCPATH)/, $(SRCS) $(SRCCLI) $(SRCSO)), $(CC) $(QUOTED_CFLAGS) $(SRC) $(DEPMT) $(SRC:$(SRCPATH)/%.c=%.o) $(DEPMM) 1>> .depend;)
 
 config.mak:
 	./configure
@@ -210,6 +265,9 @@ OPT4 = --crf 22 -b3 -m7 -r4 --me esa -t2 -A all --psy-rd 1.0:1.0 --slices 4
 OPT5 = --frames 50 --crf 24 -b3 -m10 -r3 --me tesa -t2
 OPT6 = --frames 50 -q0 -m9 -r2 --me hex -Aall
 OPT7 = --frames 50 -q0 -m2 -r1 --me hex --no-cabac
+ifeq ($(HAVE_MPEG2),1)
+OPT8 = --mpeg2 --crf 6 -b2 -m9 --me esa -t2 -I15
+endif
 
 ifeq (,$(VIDS))
 fprofiled:
@@ -219,8 +277,8 @@ fprofiled:
 else
 fprofiled:
 	$(MAKE) clean
-	$(MAKE) obe-vod$(EXE) CFLAGS="$(CFLAGS) $(PROF_GEN_CC)" LDFLAGS="$(LDFLAGS) $(PROF_GEN_LD)"
-	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7, ./obe-vod$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
+	$(MAKE) x264$(EXE) CFLAGS="$(CFLAGS) $(PROF_GEN_CC)" LDFLAGS="$(LDFLAGS) $(PROF_GEN_LD)"
+	$(foreach V, $(VIDS), $(foreach I, 0 1 2 3 4 5 6 7 8, ./obe-vod$(EXE) $(OPT$I) --threads 1 $(V) -o $(DEVNULL) ;))
 	rm -f $(SRC2:%.c=%.o)
 	$(MAKE) CFLAGS="$(CFLAGS) $(PROF_USE_CC)" LDFLAGS="$(LDFLAGS) $(PROF_USE_LD)"
 	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno) *.dyn pgopti.dpi pgopti.dpi.lock
@@ -228,12 +286,27 @@ endif
 
 clean:
 	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a *.lib *.exp *.pdb obe-vod obe-vod.exe .depend TAGS
-	rm -f checkasm checkasm.exe tools/checkasm.o tools/checkasm-a.o
+	rm -f checkasm checkasm.exe $(OBJCHK) $(GENERATED) x264_lookahead.clbin
 	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno) *.dyn pgopti.dpi pgopti.dpi.lock
 
 distclean: clean
-	rm -f config.mak x264_config.h config.h config.log obe-vod.pc obe-vod.def
-	rm -rf test/
+	rm -f config.mak x264_config.h config.h config.log x264.pc x264.def
+
+install-cli: cli
+	install -d $(DESTDIR)$(bindir)
+	install $(CLIS) $(DESTDIR)$(bindir)
+
+install-lib-dev:
+	install -d $(DESTDIR)$(includedir)
+	install -d $(DESTDIR)$(libdir)
+	install -d $(DESTDIR)$(libdir)/pkgconfig
+	install -m 644 $(SRCPATH)/x264.h $(DESTDIR)$(includedir)
+	install -m 644 x264_config.h $(DESTDIR)$(includedir)
+	install -m 644 x264.pc $(DESTDIR)$(libdir)/pkgconfig
+
+install-lib-static: lib-static install-lib-dev
+	install -m 644 $(LIBX264) $(DESTDIR)$(libdir)
+	$(if $(RANLIB), $(RANLIB) $(DESTDIR)$(libdir)/$(LIBX264))
 
 install: obe-vod$(EXE) $(SONAME)
 	install -d $(DESTDIR)$(bindir)

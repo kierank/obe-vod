@@ -1,7 +1,7 @@
 /*****************************************************************************
  * quant.h: arm quantization and level-run
  *****************************************************************************
- * Copyright (C) 2005-2012 x264 project
+ * Copyright (C) 2005-2013 x264 project
  *
  * Authors: David Conrad <lessen42@gmail.com>
  *
@@ -31,11 +31,14 @@ int x264_quant_2x2_dc_armv6( int16_t dct[4], int mf, int bias );
 int x264_quant_2x2_dc_neon( int16_t dct[4], int mf, int bias );
 int x264_quant_4x4_dc_neon( int16_t dct[16], int mf, int bias );
 int x264_quant_4x4_neon( int16_t dct[16], uint16_t mf[16], uint16_t bias[16] );
+int x264_quant_4x4x4_neon( int16_t dct[4][16], uint16_t mf[16], uint16_t bias[16] );
 int x264_quant_8x8_neon( int16_t dct[64], uint16_t mf[64], uint16_t bias[64] );
 
 void x264_dequant_4x4_dc_neon( int16_t dct[16], int dequant_mf[6][16], int i_qp );
 void x264_dequant_4x4_neon( int16_t dct[16], int dequant_mf[6][16], int i_qp );
 void x264_dequant_8x8_neon( int16_t dct[64], int dequant_mf[6][64], int i_qp );
+void x264_dequant_mpeg2_inter_neon( dctcoef dct[64], int dequant_mf[64] );
+void x264_dequant_mpeg2_intra_neon( dctcoef dct[64], int dequant_mf[64], int precision );
 
 int x264_coeff_last4_arm( int16_t * );
 int x264_coeff_last15_neon( int16_t * );

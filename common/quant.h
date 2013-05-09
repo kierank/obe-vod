@@ -1,7 +1,7 @@
 /*****************************************************************************
  * quant.h: quantization and level-run
  *****************************************************************************
- * Copyright (C) 2005-2012 x264 project
+ * Copyright (C) 2005-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Jason Garrett-Glaser <darkshikari@gmail.com>
@@ -29,8 +29,9 @@
 
 typedef struct
 {
-    int (*quant_8x8)( dctcoef dct[64], udctcoef mf[64], udctcoef bias[64] );
-    int (*quant_4x4)( dctcoef dct[16], udctcoef mf[16], udctcoef bias[16] );
+    int (*quant_8x8)  ( dctcoef dct[64], udctcoef mf[64], udctcoef bias[64] );
+    int (*quant_4x4)  ( dctcoef dct[16], udctcoef mf[16], udctcoef bias[16] );
+    int (*quant_4x4x4)( dctcoef dct[4][16], udctcoef mf[16], udctcoef bias[16] );
     int (*quant_4x4_dc)( dctcoef dct[16], int mf, int bias );
     int (*quant_2x2_dc)( dctcoef dct[4], int mf, int bias );
 
@@ -55,6 +56,9 @@ typedef struct
     int (*coeff_level_run[13])( dctcoef *dct, x264_run_level_t *runlevel );
     int (*coeff_level_run4)( dctcoef *dct, x264_run_level_t *runlevel );
     int (*coeff_level_run8)( dctcoef *dct, x264_run_level_t *runlevel );
+
+    void (*dequant_mpeg2_intra)( dctcoef dct[64], int dequant_mf[64], int precision );
+    void (*dequant_mpeg2_inter)( dctcoef dct[64], int dequant_mf[64] );
 
 #define TRELLIS_PARAMS const int *unquant_mf, const uint8_t *zigzag, int lambda2,\
                        int last_nnz, dctcoef *coefs, dctcoef *quant_coefs, dctcoef *dct,\

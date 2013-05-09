@@ -1,7 +1,7 @@
 /*****************************************************************************
  * mvpred.c: motion vector prediction
  *****************************************************************************
- * Copyright (C) 2003-2012 x264 project
+ * Copyright (C) 2003-2013 x264 project
  *
  * Authors: Loren Merritt <lorenm@u.washington.edu>
  *          Jason Garrett-Glaser <darkshikari@gmail.com>
@@ -128,6 +128,12 @@ median:
 
 void x264_mb_predict_mv_16x16( x264_t *h, int i_list, int i_ref, int16_t mvp[2] )
 {
+    if( MPEG2 )
+    {
+        CP32( mvp, h->mb.mvp[0][i_list] );
+        return;
+    }
+
     int     i_refa = h->mb.cache.ref[i_list][X264_SCAN8_0 - 1];
     int16_t *mv_a  = h->mb.cache.mv[i_list][X264_SCAN8_0 - 1];
     int     i_refb = h->mb.cache.ref[i_list][X264_SCAN8_0 - 8];
@@ -162,9 +168,21 @@ median:
         goto median;
 }
 
+void x264_mb_predict_mv_16x8_mpeg2( x264_t *h, int i_list, int i_ref, int16_t mvp[2], int field )
+{
+    CP32( mvp, h->mb.mvp[field][i_list] );
+    mvp[1] = ( mvp[1] >> 2 ) << 1;
+    return;
+}
 
 void x264_mb_predict_mv_pskip( x264_t *h, int16_t mv[2] )
 {
+    if( MPEG2 )
+    {
+        M32( mv ) = 0;
+        return;
+    }
+
     int     i_refa = h->mb.cache.ref[0][X264_SCAN8_0 - 1];
     int     i_refb = h->mb.cache.ref[0][X264_SCAN8_0 - 8];
     int16_t *mv_a  = h->mb.cache.mv[0][X264_SCAN8_0 - 1];
@@ -560,7 +578,7 @@ void x264_mb_predict_mv_ref16x16( x264_t *h, int i_list, int i_ref, int16_t mvc[
     }
 
     /* spatial predictors */
-    if( SLICE_MBAFF )
+    if( PLANE_MBAFF )
     {
         SET_IMVP( h->mb.i_mb_left_xy[0] );
         SET_IMVP( h->mb.i_mb_top_xy );
@@ -583,7 +601,7 @@ void x264_mb_predict_mv_ref16x16( x264_t *h, int i_list, int i_ref, int16_t mvc[
         x264_frame_t *l0 = h->fref[0][0];
         int field = h->mb.i_mb_y&1;
         int curpoc = h->fdec->i_poc + h->fdec->i_delta_poc[field];
-        int refpoc = h->fref[i_list][i_ref>>SLICE_MBAFF]->i_poc;
+        int refpoc = h->fref[i_list][i_ref>>PLANE_MBAFF]->i_poc;
         refpoc += l0->i_delta_poc[field^(i_ref&1)];
 
 #define SET_TMVP( dx, dy ) \
@@ -592,6 +610,11 @@ void x264_mb_predict_mv_ref16x16( x264_t *h, int i_list, int i_ref, int16_t mvc[
             int scale = (curpoc - refpoc) * l0->inv_ref_poc[MB_INTERLACED&field]; \
             mvc[i][0] = (l0->mv16x16[mb_index][0]*scale + 128) >> 8; \
             mvc[i][1] = (l0->mv16x16[mb_index][1]*scale + 128) >> 8; \
+            if( MPEG2 ) \
+            { \
+                mvc[i][0] = mvc[i][0]&~1; \
+                mvc[i][1] = mvc[i][1]&~1; \
+            } \
             i++; \
         }
 
