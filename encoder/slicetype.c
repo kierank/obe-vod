@@ -1803,7 +1803,6 @@ void x264_slicetype_decide( x264_t *h )
             /* Close GOP */
             h->lookahead->i_last_keyframe = frm->i_frame;
             frm->b_keyframe = 1;
-
             if( bframes > 0 )
             {
                 bframes--;

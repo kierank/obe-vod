@@ -1169,6 +1169,8 @@ static int x264_validate_parameters( x264_t *h, int b_open )
         h->param.i_nal_hrd = h->param.i_nal_hrd == X264_NAL_HRD_CBR ? X264_NAL_HRD_VBR : X264_NAL_HRD_FAKE_CBR;
     }
 
+    h->param.sc.max_preset = x264_clip3( h->param.sc.max_preset, 1, SC_PRESETS );
+
     /* ensure the booleans are 0 or 1 so they can be used in math */
 #define BOOLIFY(x) h->param.x = !!h->param.x
     BOOLIFY( b_cabac );
@@ -1399,7 +1401,6 @@ x264_t *x264_encoder_open( x264_param_t *param )
 
     x264_sps_init( h->sps, h->param.i_sps_id, &h->param );
     x264_pps_init( h, h->pps, h->param.i_sps_id, &h->param, h->sps );
-
     h->param.i_profile = h->sps->i_profile_idc;
 
     x264_set_aspect_ratio( h, &h->param, 1 );

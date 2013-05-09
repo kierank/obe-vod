@@ -496,7 +496,8 @@ typedef struct x264_param_t
         float       f_speed;        /* ratio from realtime */
         int         i_buffer_size;  /* number of frames */
         float       f_buffer_init;  /* fraction of size */
-        int         b_alt_timer;    /* use a different method of measuring encode time FIXME */
+        int         b_alt_timer;    /* use a different method of measuring encode time */
+        int         max_preset;     /* maximum number of speedcontrol presets to use */
     } sc;
 
     /* Muxing parameters */
@@ -1025,7 +1026,7 @@ int x264_encoder_invalidate_reference( x264_t *, int64_t pts );
 
 /* x264_speedcontrol_sync:
  *      override speedcontrol's internal clock */
-void    x264_speedcontrol_sync( x264_t *, float f_buffer_fill, int i_buffer_size );
+void    x264_speedcontrol_sync( x264_t *, float f_buffer_fill, int i_buffer_size, int buffer_complete );
 
 
 #endif
