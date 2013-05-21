@@ -28,6 +28,15 @@
 #define MP2_NUM_SAMPLES 1152
 #define AAC_NUM_SAMPLES 1024
 
+static uint8_t mpeg2_levels[] =
+{
+    [X264_MPEG2_LEVEL_LOW] = LIBMPEGTS_MPEG2_LEVEL_LOW,
+    [X264_MPEG2_LEVEL_MAIN] = LIBMPEGTS_MPEG2_LEVEL_MAIN,
+    [X264_MPEG2_LEVEL_HIGH_1440] = LIBMPEGTS_MPEG2_LEVEL_HIGH_1440,
+    [X264_MPEG2_LEVEL_HIGH] = LIBMPEGTS_MPEG2_LEVEL_HIGH,
+    [X264_MPEG2_LEVEL_HIGHP] = LIBMPEGTS_MPEG2_LEVEL_HIGHP,
+};
+
 typedef struct ts_hnd_t
 {
     ts_writer_t *w;
@@ -144,7 +153,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     // One program with one stream
 
     streams[0].pid = p_ts->opt.i_ts_video_pid ? p_ts->opt.i_ts_video_pid : cur_pid++;
-    streams[0].stream_format = LIBMPEGTS_VIDEO_AVC;
+    streams[0].stream_format = p_param->b_mpeg2 ? LIBMPEGTS_VIDEO_MPEG2 : LIBMPEGTS_VIDEO_AVC;
     streams[0].stream_id = LIBMPEGTS_STREAM_ID_MPEGVIDEO;
     streams[0].dvb_au = p_ts->opt.b_ts_dvb_au && !p_param->b_vfr_input;
 
@@ -183,20 +192,37 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     program->pmt_pid = p_ts->opt.i_ts_pmt_pid ? p_ts->opt.i_ts_pmt_pid : cur_pid++;
     program->pcr_pid = p_ts->opt.i_ts_pcr_pid ? p_ts->opt.i_ts_pcr_pid : streams[0].pid;
 
-    // from sps.c
-    int b_qpprime_y_zero_transform_bypass, i_profile_idc;
+    int i_profile_idc, i_level_idc;
+    if( p_param->b_mpeg2 )
+    {
+        if( p_param->b_422_profile )
+            i_profile_idc = LIBMPEGTS_MPEG2_PROFILE_422;
+        else if( p_param->i_bframe > 0 || p_param->b_interlaced || p_param->b_fake_interlaced || p_param->b_main_profile )
+            i_profile_idc = LIBMPEGTS_MPEG2_PROFILE_MAIN;
+        else
+            i_profile_idc = LIBMPEGTS_MPEG2_PROFILE_SIMPLE;
 
-    b_qpprime_y_zero_transform_bypass = p_param->rc.i_rc_method == X264_RC_CQP && p_param->rc.i_qp_constant == 0;
-    if( b_qpprime_y_zero_transform_bypass )
-        i_profile_idc = AVC_HIGH_444_PRED;
-    else if( BIT_DEPTH > 8 )
-        i_profile_idc = AVC_HIGH_10;
-    else if( p_param->analyse.b_transform_8x8 || p_param->i_cqm_preset != X264_CQM_FLAT )
-        i_profile_idc = AVC_HIGH;
-    else if( p_param->b_cabac || p_param->i_bframe > 0 || p_param->b_interlaced || p_param->analyse.i_weighted_pred > 0 )
-        i_profile_idc = AVC_MAIN;
+        i_level_idc = mpeg2_levels[p_param->i_level_idc];
+    }
     else
-        i_profile_idc = AVC_BASELINE;
+    {
+        // from sps.c
+        int b_qpprime_y_zero_transform_bypass;
+
+        b_qpprime_y_zero_transform_bypass = p_param->rc.i_rc_method == X264_RC_CQP && p_param->rc.i_qp_constant == 0;
+        if( b_qpprime_y_zero_transform_bypass )
+            i_profile_idc = AVC_HIGH_444_PRED;
+        else if( BIT_DEPTH > 8 )
+            i_profile_idc = AVC_HIGH_10;
+        else if( p_param->analyse.b_transform_8x8 || p_param->i_cqm_preset != X264_CQM_FLAT )
+            i_profile_idc = AVC_HIGH;
+        else if( p_param->b_cabac || p_param->i_bframe > 0 || p_param->b_interlaced || p_param->analyse.i_weighted_pred > 0 )
+            i_profile_idc = AVC_MAIN;
+        else
+            i_profile_idc = AVC_BASELINE;
+
+        i_level_idc = p_param->i_level_idc;
+    }
 
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
     {
@@ -272,7 +298,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
     if( ts_setup_transport_stream( p_ts->w, &params ) < 0 )
         return -1;
 
-    if( ts_setup_mpegvideo_stream( p_ts->w, streams[0].pid, p_param->i_level_idc, i_profile_idc, 0, 0, 0 ) < 0 )
+    if( ts_setup_mpegvideo_stream( p_ts->w, streams[0].pid, i_level_idc, i_profile_idc, 0, 0, 0 ) < 0 )
         return -1;
 
     for( int i = 0; i < p_ts->opt.num_extra_streams; i++ )
