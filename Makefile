@@ -8,6 +8,8 @@ vpath %.S $(SRCPATH)
 vpath %.asm $(SRCPATH)
 vpath %.rc $(SRCPATH)
 
+GENERATED =
+
 all: default
 default:
 
@@ -142,6 +144,21 @@ ifneq ($(HAVE_GETOPT_LONG),1)
 SRCCLI += extras/getopt.c
 endif
 
+ifeq ($(SYS),WINDOWS)
+OBJCLI += $(if $(RC), x264res.o)
+ifneq ($(SONAME),)
+SRCSO  += x264dll.c
+OBJSO  += $(if $(RC), x264res.dll.o)
+endif
+endif
+
+ifeq ($(HAVE_OPENCL),yes)
+common/oclobj.h: common/opencl/x264-cl.h $(wildcard $(SRCPATH)/common/opencl/*.cl)
+	cat $^ | perl $(SRCPATH)/tools/cltostr.pl x264_opencl_source > $@
+GENERATED += common/oclobj.h
+SRCS += common/opencl.c encoder/slicetype-cl.c
+endif
+
 OBJS   += $(SRCS:%.c=%.o)
 OBJCLI += $(SRCCLI:%.c=%.o)
 OBJSO  += $(SRCSO:%.c=%.o)
@@ -152,12 +169,12 @@ cli: obe-vod$(EXE)
 lib-static: $(LIBX264)
 lib-shared: $(SONAME)
 
-$(LIBX264): .depend $(OBJS) $(OBJASM)
+$(LIBX264): $(GENERATED) .depend $(OBJS) $(OBJASM)
 	rm -f $(LIBX264)
 	$(AR)$@ $(OBJS) $(OBJASM)
 	$(if $(RANLIB), $(RANLIB) $@)
 
-$(SONAME): .depend $(OBJS) $(OBJASM) $(OBJSO)
+$(SONAME): $(GENERATED) .depend $(OBJS) $(OBJASM) $(OBJSO)
 	$(LD)$@ $(OBJS) $(OBJASM) $(OBJSO) $(SOFLAGS) $(LDFLAGS)
 
 ifneq ($(EXE),)
@@ -166,10 +183,10 @@ obe-vod: obe-vod$(EXE)
 checkasm: checkasm$(EXE)
 endif
 
-obe-vod$(EXE): .depend $(OBJCLI) $(CLI_LIBX264)
+obe-vod$(EXE): $(GENERATED) .depend $(OBJCLI) $(CLI_LIBX264)
 	$(LD)$@ $(OBJCLI) $(CLI_LIBX264) $(LDFLAGSCLI) $(LDFLAGS)
 
-checkasm$(EXE): .depend $(OBJCHK) $(LIBX264)
+checkasm$(EXE): $(GENERATED) .depend $(OBJCHK) $(LIBX264)
 	$(LD)$@ $(OBJCHK) $(LIBX264) $(LDFLAGS)
 
 $(OBJS) $(OBJASM) $(OBJSO) $(OBJCLI) $(OBJCHK): .depend
@@ -228,7 +245,7 @@ endif
 
 clean:
 	rm -f $(OBJS) $(OBJASM) $(OBJCLI) $(OBJSO) $(SONAME) *.a *.lib *.exp *.pdb obe-vod obe-vod.exe .depend TAGS
-	rm -f checkasm checkasm.exe tools/checkasm.o tools/checkasm-a.o
+	rm -f checkasm checkasm.exe $(OBJCHK) $(GENERATED) x264_lookahead.clbin
 	rm -f $(SRC2:%.c=%.gcda) $(SRC2:%.c=%.gcno) *.dyn pgopti.dpi pgopti.dpi.lock
 
 distclean: clean
