@@ -2260,7 +2260,5 @@ fail:
     for( int i = 0; i < opt->num_scc; i++ )
         fclose( opt->scc_opts[i].scc_file );
 
-    SetConsoleTitle( originalCTitle );
-
     return retval;
 }
