@@ -32,6 +32,9 @@
 #if HAVE_MALLOC_H
 #include <malloc.h>
 #endif
+#if HAVE_THP
+#include <sys/mman.h>
+#endif
 
 const int x264_bit_depth = BIT_DEPTH;
 
@@ -347,7 +350,7 @@ static int x264_param_apply_tune( x264_param_t *param, const char *tune )
             param->analyse.i_luma_deadzone[1] = 6;
             param->rc.f_qcompress = 0.8;
         }
-        else if( !strncasecmp( s, "stillimage", 5 ) )
+        else if( !strncasecmp( s, "stillimage", 10 ) )
         {
             if( psy_tuning_used++ ) goto psy_failure;
             param->i_deblocking_filter_alphac0 = -3;
@@ -673,6 +676,8 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
     }
     OPT("bluray-compat")
         p->b_bluray_compat = atobool(value);
+    OPT("avcintra-compat")
+        p->b_avcintra_compat = atobool(value);
     OPT("sar")
     {
         b_error = ( 2 != sscanf( value, "%d:%d", &p->vui.i_sar_width, &p->vui.i_sar_height ) &&
@@ -1050,6 +1055,8 @@ int x264_param_parse( x264_param_t *p, const char *name, const char *value )
         p->b_fake_interlaced = atobool(value);
     OPT("frame-packing")
         p->i_frame_packing = atoi(value);
+    OPT("stitchable")
+        p->b_stitchable = atobool(value);
     OPT("opencl")
         p->b_opencl = atobool( value );
     OPT("opencl-clbin")
@@ -1110,7 +1117,7 @@ static void x264_log_default( void *p_unused, int i_level, const char *psz_fmt, 
             break;
     }
     fprintf( stderr, "x264 [%s]: ", psz_prefix );
-    vfprintf( stderr, psz_fmt, arg );
+    x264_vfprintf( stderr, psz_fmt, arg );
 }
 
 /****************************************************************************
@@ -1194,7 +1201,25 @@ void *x264_malloc( int i_size )
 {
     uint8_t *align_buf = NULL;
 #if HAVE_MALLOC_H
-    align_buf = memalign( NATIVE_ALIGN, i_size );
+#if HAVE_THP
+#define HUGE_PAGE_SIZE 2*1024*1024
+#define HUGE_PAGE_THRESHOLD HUGE_PAGE_SIZE*7/8 /* FIXME: Is this optimal? */
+    /* Attempt to allocate huge pages to reduce TLB misses. */
+    if( i_size >= HUGE_PAGE_THRESHOLD )
+    {
+        align_buf = memalign( HUGE_PAGE_SIZE, i_size );
+        if( align_buf )
+        {
+            /* Round up to the next huge page boundary if we are close enough. */
+            size_t madv_size = (i_size + HUGE_PAGE_SIZE - HUGE_PAGE_THRESHOLD) & ~(HUGE_PAGE_SIZE-1);
+            madvise( align_buf, madv_size, MADV_HUGEPAGE );
+        }
+    }
+    else
+#undef HUGE_PAGE_SIZE
+#undef HUGE_PAGE_THRESHOLD
+#endif
+        align_buf = memalign( NATIVE_ALIGN, i_size );
 #else
     uint8_t *buf = malloc( i_size + (NATIVE_ALIGN-1) + sizeof(void **) );
     if( buf )
@@ -1257,7 +1282,7 @@ char *x264_slurp_file( const char *filename )
     int b_error = 0;
     size_t i_size;
     char *buf;
-    FILE *fh = fopen( filename, "rb" );
+    FILE *fh = x264_fopen( filename, "rb" );
     if( !fh )
         return NULL;
     b_error |= fseek( fh, 0, SEEK_END ) < 0;
@@ -1346,6 +1371,8 @@ char *x264_param2string( x264_param_t *p, int b_res )
     s += sprintf( s, " decimate=%d", p->analyse.b_dct_decimate );
     s += sprintf( s, " interlaced=%s", p->b_interlaced ? p->b_tff ? "tff" : "bff" : p->b_fake_interlaced ? "fake" : "0" );
     s += sprintf( s, " bluray_compat=%d", p->b_bluray_compat );
+    if( p->b_stitchable )
+        s += sprintf( s, " stitchable=%d", p->b_stitchable );
 
     s += sprintf( s, " constrained_intra=%d", p->b_constrained_intra );
 
