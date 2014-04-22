@@ -229,7 +229,7 @@ static int set_param( hnd_t handle, x264_param_t *p_param )
         }
         else if( !strcasecmp( ext, "mp2" ) )
         {
-            streams[1+i].stream_format = LIBMPEGTS_AUDIO_MPEG2;
+            streams[1+i].stream_format = LIBMPEGTS_AUDIO_MPEG1;
             streams[1+i].stream_id = LIBMPEGTS_STREAM_ID_MPEGAUDIO;
             extra_stream->frame_size = (double)MP2_NUM_SAMPLES * extra_stream->bitrate / (48000 * 8);
             extra_stream->increment = (double)MP2_NUM_SAMPLES * 90000LL / 48000;
