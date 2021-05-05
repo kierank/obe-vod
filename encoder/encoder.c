@@ -3454,7 +3454,7 @@ int     x264_encoder_encode( x264_t *h,
         h->out.i_nal = 0;
     }
 
-    if( h->param.b_aud )
+    if( !MPEG2 && h->param.b_aud )
     {
         int pic_type;
 
