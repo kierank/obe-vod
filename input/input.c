@@ -125,7 +125,7 @@ void increase_tc( cli_opt_t *opt, cli_timecode_t *timecode )
     }
 
     /* 29.97 and 59.94 Drop Frame - SMPTE 12M-2008 */
-    if( opt->drop_frame && !( timecode->min % 10 ) && timecode->sec == 0 && timecode->frame == 0 )
+    if( opt->drop_frame && ( ( timecode->min % 10 ) != 0 ) && timecode->sec == 0 && timecode->frame == 0 )
         timecode->frame = 2;
 
 }
